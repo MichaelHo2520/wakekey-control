@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WakeKey">
+<title>WakeKey 控制台</title>
+<!-- Static page: no secrets in here. The broker address and the wk-admin password
+     are typed in on first use and, if the user asks, kept in this browser only. -->
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+:root {
+  --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #dde2e7;
+  --accent: #1f6feb; --accent-text: #fff; --ok: #1a7f37; --warn: #b35900; --bad: #cf222e;
+  --chip: #eef1f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --card: #171b22; --text: #e6edf3; --muted: #8b96a2; --line: #2b323c;
+    --accent: #2f81f7; --accent-text: #fff; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    --chip: #222832;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+main { max-width: 560px; margin: 0 auto; }
+h1 { font-size: 1.35rem; margin: 4px 0 16px; display: flex; align-items: center; gap: 10px; }
+h1 .conn { font-size: .8rem; font-weight: 500; color: var(--muted); margin-left: auto; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+label { display: block; font-size: .9rem; color: var(--muted); margin: 10px 0 4px; }
+input[type=text], input[type=password] {
+  width: 100%; padding: 11px 12px; font-size: 1rem; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+}
+.check { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text); }
+button {
+  font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--chip);
+  color: var(--text); padding: 10px 14px; cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.big { width: 100%; padding: 18px; font-size: 1.25rem; border-radius: 14px; margin-top: 14px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.row button { flex: 1 1 auto; }
+.dev-head { display: flex; align-items: center; gap: 10px; }
+.dev-name { font-size: 1.15rem; font-weight: 700; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: var(--ok); } .dot.off { background: var(--bad); }
+.badge { margin-left: auto; font-size: .8rem; padding: 3px 9px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: .92rem; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+.result { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--chip); font-size: .92rem; display: none; }
+.result.show { display: block; }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--muted); font-size: .92rem; }
+pre.log {
+  margin: 8px 0 0; padding: 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line);
+  font-size: .78rem; line-height: 1.45; white-space: pre-wrap; max-height: 260px; overflow: auto;
+}
+.hint { font-size: .85rem; color: var(--muted); margin-top: 10px; }
+.empty { text-align: center; color: var(--muted); padding: 24px 8px; }
+footer { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 8px; }
+footer button { padding: 6px 10px; font-size: .8rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>WakeKey <span class="conn" id="conn"></span></h1>
+
+  <section class="card" id="login" hidden>
+    <form id="loginForm">
+      <label for="host">Broker 位址</label>
+      <input type="text" id="host" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="xxxxxxxx.ala.asia-southeast1.emqxsl.com" required>
+      <label for="user">帳號</label>
+      <input type="text" id="user" autocomplete="username" autocapitalize="off" spellcheck="false" value="wk-admin" required>
+      <label for="pass">密碼</label>
+      <input type="password" id="pass" autocomplete="current-password" required>
+      <label class="check"><input type="checkbox" id="remember"> 記住在這台裝置（只存在這個瀏覽器）</label>
+      <button class="primary big" type="submit">連線</button>
+      <div class="result" id="loginMsg"></div>
+    </form>
+  </section>
+
+  <div id="devices"></div>
+
+  <footer id="foot" hidden>
+    <button id="logout">登出</button>
+    <button id="forget">登出並忘記密碼</button>
+  </footer>
+</main>
+
+<script>
+"use strict";
+const STORE = "wakekey.login.v1";
+const CMD_TIMEOUT_MS = 20000;
+const $ = (id) => document.getElementById(id);
+let client = null;
+const devices = new Map();      // id -> {status, events[], el}
+const pending = new Map();      // rid -> {resolve, timer}
+
+/* ---------- storage (per-viewer convenience only) ---------- */
+function loadLogin() {
+  try { return JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { return null; }
+}
+function saveLogin(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {} }
+function clearLogin() { try { localStorage.removeItem(STORE); } catch (e) {} }
+
+/* ---------- helpers ---------- */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function rid() { return Math.random().toString(36).slice(2, 10); }
+function setConn(text, cls) { const c = $("conn"); c.textContent = text; c.className = "conn " + (cls || ""); }
+function ago(ts) {
+  if (!ts) return "";
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  if (s < 60) return s + " 秒前";
+  if (s < 3600) return Math.round(s / 60) + " 分鐘前";
+  return Math.round(s / 3600) + " 小時前";
+}
+function pcState(st) {
+  if (!st || st.online === false) return ["—", "muted"];
+  if (st.usb === "suspended") return ["睡眠中", "warn"];
+  if (st.usb === "awake") return ["醒著", "ok"];
+  return ["USB 未連接", "bad"];
+}
+
+/* ---------- MQTT ---------- */
+function connect(login, fromSaved) {
+  if (client) { client.end(true); client = null; }
+  setConn("連線中…");
+  const url = "wss://" + login.host.trim() + ":8084/mqtt";
+  client = mqtt.connect(url, {
+    username: login.user.trim(), password: login.pass,
+    clientId: "wk-web-" + rid(), keepalive: 30, reconnectPeriod: 5000, connectTimeout: 15000, clean: true,
+  });
+  let everConnected = false;
+  client.on("connect", () => {
+    everConnected = true;
+    setConn("已連線", "ok");
+    $("login").hidden = true; $("foot").hidden = false;
+    client.subscribe(["wakekey/+/status", "wakekey/+/event", "wakekey/+/resp"], { qos: 1 });
+    if (!devices.size) $("devices").innerHTML = '<div class="card empty">等待設備回報狀態…</div>';
+  });
+  client.on("reconnect", () => setConn("重新連線中…", "warn"));
+  client.on("offline", () => setConn("離線", "bad"));
+  client.on("error", (err) => {
+    const msg = /auth|password|Not authorized|Bad user/i.test(String(err && err.message)) ? "帳號或密碼錯誤" : "連線失敗：" + (err && err.message);
+    if (!everConnected) {
+      client.end(true); client = null;
+      showLogin(msg, fromSaved ? login : null);
+    }
+    setConn(msg, "bad");
+  });
+  client.on("message", onMessage);
+}
+
+function onMessage(topic, payload) {
+  const m = topic.match(/^wakekey\/([^/]+)\/(status|event|resp)$/);
+  if (!m) return;
+  const [, id, kind] = m;
+  const text = new TextDecoder().decode(payload);
+  if (kind === "resp") {
+    let r; try { r = JSON.parse(text); } catch (e) { return; }
+    const p = pending.get(r.rid);
+    if (p) { clearTimeout(p.timer); pending.delete(r.rid); p.resolve(r); }
+    return;
+  }
+  const d = device(id);
+  if (kind === "status") {
+    try { d.status = JSON.parse(text); } catch (e) { return; }
+    d.statusAt = Date.now();
+  } else {
+    d.events.push(text);
+    if (d.events.length > 40) d.events.shift();
+  }
+  render(id);
+}
+
+function send(id, op, extra) {
+  return new Promise((resolve) => {
+    if (!client || !client.connected) { resolve({ ok: false, msg: "還沒連上 broker" }); return; }
+    const r = rid();
+    const body = Object.assign({ rid: r, ts: Math.floor(Date.now() / 1000), op }, extra || {});
+    const timer = setTimeout(() => { pending.delete(r); resolve({ ok: false, msg: "設備沒有回應（可能離線）" }); }, CMD_TIMEOUT_MS);
+    pending.set(r, { resolve, timer });
+    client.publish("wakekey/" + id + "/cmd", JSON.stringify(body), { qos: 1 });
+  });
+}
+
+/* ---------- UI ---------- */
+function device(id) {
+  if (!devices.has(id)) {
+    devices.set(id, { status: null, events: [], el: null });
+    const empty = document.querySelector("#devices .empty");
+    if (empty) empty.remove();
+    const el = document.createElement("section");
+    el.className = "card";
+    el.innerHTML = `
+      <div class="dev-head"><span class="dot"></span><span class="dev-name">${esc(id)}</span><span class="badge"></span></div>
+      <dl class="facts"></dl>
+      <button class="primary big" data-act="unlock">解鎖</button>
+      <div class="row"><button data-act="wake">只喚醒</button><button data-act="journal">完整紀錄</button></div>
+      <div class="result"></div>
+      <details><summary>即時事件</summary><pre class="log"></pre></details>`;
+    el.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-act]");
+      if (b) act(id, b.dataset.act, b);
+    });
+    $("devices").appendChild(el);
+    devices.get(id).el = el;
+  }
+  return devices.get(id);
+}
+
+function render(id) {
+  const d = devices.get(id), st = d.status || {}, el = d.el;
+  const online = st.online === true;
+  el.querySelector(".dot").className = "dot " + (online ? "on" : st.online === false ? "off" : "");
+  const [pc, pcCls] = pcState(st);
+  el.querySelector(".badge").textContent = online ? (st.busy ? "執行中…" : "在線") : st.online === false ? "離線" : "";
+  const rw = st.rwake === 1 ? "允許" : st.rwake === 0 ? '<span class="bad">未允許</span>' : '<span class="muted">尚未得知</span>';
+  el.querySelector(".facts").innerHTML = online ? `
+      <dt>電腦</dt><dd class="${pcCls}">${pc}</dd>
+      <dt>遠端喚醒</dt><dd>${rw}</dd>
+      <dt>PIN</dt><dd>${st.pin ? "已設定" : '<span class="warn">未設定</span>'}</dd>
+      <dt>最近一次</dt><dd>${esc(st.last) || '<span class="muted">—</span>'}</dd>
+      <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>
+      <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>`
+    : `<dt>狀態</dt><dd class="bad">設備離線：不在網路上或已斷電</dd>`;
+  el.querySelectorAll("button[data-act]").forEach((b) => { b.disabled = !online || (b.dataset.act !== "journal" && !!st.busy); });
+  el.querySelector("pre.log").textContent = d.events.slice().reverse().join("\n") || "（還沒有事件）";
+}
+
+function showResult(id, html, cls) {
+  const r = devices.get(id).el.querySelector(".result");
+  r.className = "result show " + (cls || "");
+  r.innerHTML = html;
+}
+
+async function act(id, what, btn) {
+  if (what === "journal") {
+    btn.disabled = true;
+    const r = await send(id, "journal");
+    btn.disabled = false;
+    const d = devices.get(id);
+    d.el.querySelector("details").open = true;
+    d.el.querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
+    return;
+  }
+  if (what === "unlock" && !confirm("解鎖「" + id + "」？\n會喚醒電腦並自動輸入 PIN。")) return;
+  if (what === "wake" && !confirm("喚醒「" + id + "」？")) return;
+  await run(id, what, false);
+}
+
+async function run(id, what, force) {
+  showResult(id, "送出中…");
+  const r = what === "unlock" ? await send(id, "unlock", { seq: "unlock", force }) : await send(id, "wake");
+  if (r.rate_limited) {
+    showResult(id, esc(r.msg) + '<div class="row"><button class="primary" data-force>仍要執行</button></div>', "warn");
+    devices.get(id).el.querySelector("[data-force]").onclick = () => run(id, what, true);
+    return;
+  }
+  showResult(id, (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && what === "unlock" ? "<div class='hint'>過程會顯示在下方「即時事件」，大約 10–40 秒完成。</div>" : ""),
+             r.ok ? "ok" : "bad");
+  if (r.ok) devices.get(id).el.querySelector("details").open = true;
+}
+
+function showLogin(msg, prefill) {
+  $("login").hidden = false; $("foot").hidden = true;
+  const saved = prefill || loadLogin();
+  if (saved) { $("host").value = saved.host || ""; $("user").value = saved.user || "wk-admin"; }
+  $("remember").checked = !!loadLogin();
+  const m = $("loginMsg");
+  m.className = "result" + (msg ? " show bad" : ""); m.textContent = msg || "";
+  setConn("");
+}
+
+$("loginForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const login = { host: $("host").value.trim(), user: $("user").value.trim(), pass: $("pass").value };
+  if ($("remember").checked) saveLogin(login); else clearLogin();
+  $("pass").value = "";
+  connect(login, false);
+});
+$("logout").onclick = () => { if (client) client.end(true); client = null; devices.clear(); $("devices").innerHTML = ""; showLogin(); };
+$("forget").onclick = () => { clearLogin(); $("logout").onclick(); };
+setInterval(() => devices.forEach((d, id) => d.status && render(id)), 30000);
+
+const saved = loadLogin();
+if (saved && saved.pass) connect(saved, true); else showLogin();
+</script>
+</body>
+</html>
