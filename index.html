@@ -6,21 +6,25 @@
 <meta name="theme-color" content="#1f6feb">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WakeKey">
-<title>WakeKey 控制台</title>
-<!-- Static page: no secrets in here. The broker address and the wk-admin password
-     are typed in on first use and, if the user asks, kept in this browser only. -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>WakeKey</title>
+<!-- Static page: no secrets in here. The broker address and the wk-admin password are
+     typed in on first use and, if the user asks, kept in this browser only. The device
+     list lives on the broker as a retained message only wk-admin can read. -->
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root {
   --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #dde2e7;
   --accent: #1f6feb; --accent-text: #fff; --ok: #1a7f37; --warn: #b35900; --bad: #cf222e;
-  --chip: #eef1f4;
+  --chip: #eef1f4; --confirm: #b35900;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0e1116; --card: #171b22; --text: #e6edf3; --muted: #8b96a2; --line: #2b323c;
     --accent: #2f81f7; --accent-text: #fff; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
-    --chip: #222832;
+    --chip: #222832; --confirm: #d29922;
   }
 }
 * { box-sizing: border-box; }
@@ -32,7 +36,8 @@ body {
 main { max-width: 560px; margin: 0 auto; }
 h1 { font-size: 1.35rem; margin: 4px 0 16px; display: flex; align-items: center; gap: 10px; }
 h1 .conn { font-size: .8rem; font-weight: 500; color: var(--muted); margin-left: auto; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
 label { display: block; font-size: .9rem; color: var(--muted); margin: 10px 0 4px; }
 input[type=text], input[type=password] {
   width: 100%; padding: 11px 12px; font-size: 1rem; border-radius: 10px;
@@ -41,19 +46,30 @@ input[type=text], input[type=password] {
 .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text); }
 button {
   font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--chip);
-  color: var(--text); padding: 10px 14px; cursor: pointer;
+  color: var(--text); padding: 10px 14px; cursor: pointer; touch-action: manipulation;
 }
-button:disabled { opacity: .5; cursor: default; }
+button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-button.big { width: 100%; padding: 18px; font-size: 1.25rem; border-radius: 14px; margin-top: 14px; }
+button.wide { width: 100%; padding: 14px; font-size: 1.05rem; margin-top: 12px; }
+button.link { background: none; border: none; color: var(--accent); padding: 6px 4px; }
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.acts button { padding: 18px 8px; font-size: 1.2rem; font-weight: 600; border-radius: 14px; }
+.acts button.arm { background: var(--confirm); border-color: var(--confirm); color: #fff; }
+.acts.more { margin-top: 10px; }
+.acts.more button { padding: 12px 8px; font-size: 1rem; font-weight: 500; position: relative; overflow: hidden; }
+.acts.more button.hold::after { content: ""; position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--bad);
+  transform-origin: left; animation: hold 2s linear forwards; }
+@keyframes hold { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .row button { flex: 1 1 auto; }
 .dev-head { display: flex; align-items: center; gap: 10px; }
-.dev-name { font-size: 1.15rem; font-weight: 700; }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dev-name { font-size: 1.2rem; font-weight: 700; }
+.dev-sub { color: var(--muted); font-size: .9rem; margin-top: 2px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.on { background: var(--ok); } .dot.off { background: var(--bad); }
-.badge { margin-left: auto; font-size: .8rem; padding: 3px 9px; border-radius: 99px; background: var(--chip); color: var(--muted); }
-.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 12px 0 0; font-size: .92rem; }
+.pill { margin-left: auto; font-size: .82rem; padding: 3px 10px; border-radius: 99px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0 0; font-size: .92rem; }
 .facts dt { color: var(--muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
 .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .muted { color: var(--muted); }
 .result { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--chip); font-size: .92rem; display: none; }
@@ -64,8 +80,18 @@ pre.log {
   margin: 8px 0 0; padding: 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line);
   font-size: .78rem; line-height: 1.45; white-space: pre-wrap; max-height: 260px; overflow: auto;
 }
-.hint { font-size: .85rem; color: var(--muted); margin-top: 10px; }
-.empty { text-align: center; color: var(--muted); padding: 24px 8px; }
+.hint { font-size: .86rem; color: var(--muted); margin-top: 8px; }
+.empty { text-align: center; color: var(--muted); padding: 22px 8px; }
+.found { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.found:first-of-type { border-top: none; }
+.found span { flex: 1; }
+.step { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.step b.n { display: inline-block; width: 1.6em; height: 1.6em; line-height: 1.6em; text-align: center; border-radius: 50%; background: var(--accent); color: #fff; font-size: .85rem; margin-right: 6px; }
+.copy { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.copy code { flex: 1; padding: 9px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-size: .85rem; overflow-wrap: anywhere; }
+.qr { background: #fff; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 8px; }
+.radio { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; color: var(--text); font-size: .95rem; }
+.radio input { margin-top: 5px; }
 footer { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 8px; }
 footer button { padding: 6px 10px; font-size: .8rem; }
 </style>
@@ -83,13 +109,22 @@ footer button { padding: 6px 10px; font-size: .8rem; }
       <input type="text" id="user" autocomplete="username" autocapitalize="off" spellcheck="false" value="wk-admin" required>
       <label for="pass">密碼</label>
       <input type="password" id="pass" autocomplete="current-password" required>
-      <label class="check"><input type="checkbox" id="remember"> 記住在這台裝置（只存在這個瀏覽器）</label>
-      <button class="primary big" type="submit">連線</button>
+      <label class="check"><input type="checkbox" id="remember" checked> 記住在這台裝置（只存在這個瀏覽器）</label>
+      <button class="primary wide" type="submit">連線</button>
       <div class="result" id="loginMsg"></div>
     </form>
   </section>
 
-  <div id="devices"></div>
+  <div id="app" hidden>
+    <div id="devices"></div>
+    <section class="card" id="foundCard" hidden>
+      <h2>發現的裝置</h2>
+      <div class="hint" style="margin-top:0">這些板子已經連上雲端，但還不在你的清單裡。</div>
+      <div id="found"></div>
+    </section>
+    <section class="card" id="addCard" hidden></section>
+    <button class="wide" id="addBtn">＋ 新增裝置</button>
+  </div>
 
   <footer id="foot" hidden>
     <button id="logout">登出</button>
@@ -100,16 +135,20 @@ footer button { padding: 6px 10px; font-size: .8rem; }
 <script>
 "use strict";
 const STORE = "wakekey.login.v1";
+const REG_TOPIC = "wakekey/_admin/devices";   /* retained {v:1, devices:[{id,name}]}; devices cannot read it (ACL) */
+const MQTTS_PORT = 8883;                       /* what boards use; the page itself uses WSS 8084 */
 const CMD_TIMEOUT_MS = 20000;
+const ARM_MS = 4000;
+const ID_RE = /^[a-z0-9][a-z0-9-]{1,15}$/;
 const $ = (id) => document.getElementById(id);
-let client = null;
-const devices = new Map();      // id -> {status, events[], el}
-const pending = new Map();      // rid -> {resolve, timer}
+let client = null, login = null;
+let registry = null;                 /* null until the retained message (or its absence) is known */
+const live = new Map();              /* id -> {status, statusAt, events[]} */
+const pending = new Map();           /* rid -> {resolve, timer} */
+let adding = null;                   /* add-device wizard state */
 
 /* ---------- storage (per-viewer convenience only) ---------- */
-function loadLogin() {
-  try { return JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { return null; }
-}
+function loadLogin() { try { return JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { return null; } }
 function saveLogin(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {} }
 function clearLogin() { try { localStorage.removeItem(STORE); } catch (e) {} }
 
@@ -119,6 +158,8 @@ function esc(s) {
 }
 function rid() { return Math.random().toString(36).slice(2, 10); }
 function setConn(text, cls) { const c = $("conn"); c.textContent = text; c.className = "conn " + (cls || ""); }
+/* Phones turn a scanned host into "http://host/"; keep only the host name. */
+function normHost(h) { return String(h || "").trim().replace(/^[a-z]+:\/\//i, "").replace(/[/?#].*$/, "").replace(/:\d+$/, ""); }
 function ago(ts) {
   if (!ts) return "";
   const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
@@ -126,159 +167,355 @@ function ago(ts) {
   if (s < 3600) return Math.round(s / 60) + " 分鐘前";
   return Math.round(s / 3600) + " 小時前";
 }
-function pcState(st) {
-  if (!st || st.online === false) return ["—", "muted"];
-  if (st.usb === "suspended") return ["睡眠中", "warn"];
-  if (st.usb === "awake") return ["醒著", "ok"];
-  return ["USB 未連接", "bad"];
+function randomPassword(n) {
+  const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const r = new Uint32Array(n); crypto.getRandomValues(r);
+  return Array.from(r, (x) => a[x % a.length]).join("");
 }
+function pairingCode(host, user, pw) {
+  const bytes = new TextEncoder().encode(JSON.stringify({ h: host, p: MQTTS_PORT, u: user, pw }));
+  let bin = ""; bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return "wk1:" + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); } catch (e) {
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); } catch (e2) {} t.remove();
+  }
+  if (btn) { const o = btn.textContent; btn.textContent = "已複製"; setTimeout(() => { btn.textContent = o; }, 1500); }
+}
+function devName(id) { const d = registry && registry.find((x) => x.id === id); return d ? d.name : id; }
 
 /* ---------- MQTT ---------- */
-function connect(login, fromSaved) {
+function connect(l, fromSaved) {
   if (client) { client.end(true); client = null; }
+  login = Object.assign({}, l, { host: normHost(l.host) });
+  registry = null;
   setConn("連線中…");
-  const url = "wss://" + login.host.trim() + ":8084/mqtt";
-  client = mqtt.connect(url, {
-    username: login.user.trim(), password: login.pass,
+  client = mqtt.connect("wss://" + login.host + ":8084/mqtt", {
+    username: login.user, password: login.pass,
     clientId: "wk-web-" + rid(), keepalive: 30, reconnectPeriod: 5000, connectTimeout: 15000, clean: true,
   });
   let everConnected = false;
   client.on("connect", () => {
     everConnected = true;
     setConn("已連線", "ok");
-    $("login").hidden = true; $("foot").hidden = false;
-    client.subscribe(["wakekey/+/status", "wakekey/+/event", "wakekey/+/resp"], { qos: 1 });
-    if (!devices.size) $("devices").innerHTML = '<div class="card empty">等待設備回報狀態…</div>';
+    $("login").hidden = true; $("app").hidden = false; $("foot").hidden = false;
+    client.subscribe([REG_TOPIC, "wakekey/+/status", "wakekey/+/event", "wakekey/+/resp"], { qos: 1 });
+    /* a retained registry arrives right after SUBACK; if none does, start with an empty list */
+    setTimeout(() => { if (registry === null) { registry = []; renderAll(); } }, 2500);
+    renderAll();
   });
   client.on("reconnect", () => setConn("重新連線中…", "warn"));
   client.on("offline", () => setConn("離線", "bad"));
   client.on("error", (err) => {
     const msg = /auth|password|Not authorized|Bad user/i.test(String(err && err.message)) ? "帳號或密碼錯誤" : "連線失敗：" + (err && err.message);
-    if (!everConnected) {
-      client.end(true); client = null;
-      showLogin(msg, fromSaved ? login : null);
-    }
+    if (!everConnected) { client.end(true); client = null; showLogin(msg, fromSaved ? l : null); }
     setConn(msg, "bad");
   });
   client.on("message", onMessage);
 }
 
 function onMessage(topic, payload) {
-  const m = topic.match(/^wakekey\/([^/]+)\/(status|event|resp)$/);
-  if (!m) return;
-  const [, id, kind] = m;
   const text = new TextDecoder().decode(payload);
+  if (topic === REG_TOPIC) {
+    try { const j = JSON.parse(text || "{}"); registry = Array.isArray(j.devices) ? j.devices : []; } catch (e) { registry = []; }
+    renderAll();
+    return;
+  }
+  const m = topic.match(/^wakekey\/([^/]+)\/(status|event|resp)$/);
+  if (!m || m[1].startsWith("_")) return;
+  const [, id, kind] = m;
   if (kind === "resp") {
     let r; try { r = JSON.parse(text); } catch (e) { return; }
     const p = pending.get(r.rid);
     if (p) { clearTimeout(p.timer); pending.delete(r.rid); p.resolve(r); }
     return;
   }
-  const d = device(id);
+  const d = liveOf(id);
   if (kind === "status") {
+    if (!text) { live.delete(id); renderAll(); return; }   /* retained status cleared (device removed) */
     try { d.status = JSON.parse(text); } catch (e) { return; }
     d.statusAt = Date.now();
   } else {
     d.events.push(text);
     if (d.events.length > 40) d.events.shift();
   }
-  render(id);
+  renderAll();
+}
+function liveOf(id) {
+  if (!live.has(id)) live.set(id, { status: null, statusAt: 0, events: [] });
+  return live.get(id);
 }
 
 function send(id, op, extra) {
   return new Promise((resolve) => {
-    if (!client || !client.connected) { resolve({ ok: false, msg: "還沒連上 broker" }); return; }
+    if (!client || !client.connected) { resolve({ ok: false, msg: "還沒連上雲端" }); return; }
     const r = rid();
     const body = Object.assign({ rid: r, ts: Math.floor(Date.now() / 1000), op }, extra || {});
-    const timer = setTimeout(() => { pending.delete(r); resolve({ ok: false, msg: "設備沒有回應（可能離線）" }); }, CMD_TIMEOUT_MS);
+    const timer = setTimeout(() => { pending.delete(r); resolve({ ok: false, msg: "板子沒有回應（可能離線）" }); }, CMD_TIMEOUT_MS);
     pending.set(r, { resolve, timer });
     client.publish("wakekey/" + id + "/cmd", JSON.stringify(body), { qos: 1 });
   });
 }
 
-/* ---------- UI ---------- */
-function device(id) {
-  if (!devices.has(id)) {
-    devices.set(id, { status: null, events: [], el: null });
-    const empty = document.querySelector("#devices .empty");
-    if (empty) empty.remove();
-    const el = document.createElement("section");
-    el.className = "card";
-    el.innerHTML = `
-      <div class="dev-head"><span class="dot"></span><span class="dev-name">${esc(id)}</span><span class="badge"></span></div>
-      <dl class="facts"></dl>
-      <button class="primary big" data-act="unlock">解鎖</button>
-      <div class="row"><button data-act="wake">只喚醒</button><button data-act="journal">完整紀錄</button></div>
-      <div class="result"></div>
-      <details><summary>即時事件</summary><pre class="log"></pre></details>`;
-    el.addEventListener("click", (ev) => {
-      const b = ev.target.closest("button[data-act]");
-      if (b) act(id, b.dataset.act, b);
-    });
-    $("devices").appendChild(el);
-    devices.get(id).el = el;
-  }
-  return devices.get(id);
+function saveRegistry(list) {
+  registry = list;
+  client.publish(REG_TOPIC, JSON.stringify({ v: 1, devices: list }), { qos: 1, retain: true });
+  renderAll();
 }
 
-function render(id) {
-  const d = devices.get(id), st = d.status || {}, el = d.el;
+/* ---------- device cards ---------- */
+const cards = new Map();   /* id -> element */
+const results = new Map(); /* id -> {html, cls} kept across re-renders */
+
+function pcLine(st) {
+  if (!st || st.online !== true) return "";
+  if (st.usb === "suspended") return '<span class="warn">電腦睡眠中</span>';
+  if (st.usb === "awake") return '<span class="ok">電腦醒著</span>';
+  return '<span class="bad">板子沒接到電腦</span>';
+}
+
+function cardFor(id) {
+  if (cards.has(id)) return cards.get(id);
+  const el = document.createElement("section");
+  el.className = "card";
+  el.innerHTML = `
+    <div class="dev-head"><span class="dot"></span><div><div class="dev-name"></div><div class="dev-sub"></div></div><span class="pill"></span></div>
+    <div class="acts"><button data-act="wake">喚醒</button><button class="primary" data-act="unlock">解鎖</button></div>
+    <div class="acts more" hidden><button data-act="standby" hidden>待機</button><button data-hold="restart" hidden>重新開機（長按）</button></div>
+    <div class="result"></div>
+    <details><summary>詳細資料與紀錄</summary>
+      <dl class="facts"></dl>
+      <div class="row"><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="remove">移除</button></div>
+      <pre class="log"></pre>
+    </details>`;
+  el.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-act]");
+    if (b) act(id, b.dataset.act, b);
+  });
+  holdButton(el.querySelector("[data-hold=restart]"), () => {
+    if (confirm("重新開機「" + devName(id) + "」？\n電腦上沒存檔的資料會不見。")) run(id, "seq", false, "restart");
+  });
+  cards.set(id, el);
+  return el;
+}
+
+/* Long press (2 s, matches the CSS bar) before a destructive action; releasing early cancels. */
+function holdButton(btn, fn) {
+  let t = null;
+  const stop = () => { clearTimeout(t); t = null; btn.classList.remove("hold"); };
+  btn.addEventListener("pointerdown", (ev) => {
+    if (btn.disabled) return;
+    ev.preventDefault(); btn.classList.add("hold");
+    t = setTimeout(() => { stop(); fn(); }, 2000);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((e) => btn.addEventListener(e, stop));
+  btn.addEventListener("contextmenu", (ev) => ev.preventDefault());
+}
+
+/* Which named sequences a board has decides the extra buttons (standby / restart) and whether 解鎖 exists. */
+async function loadSeqs(id) {
+  const d = liveOf(id);
+  if (d.seqsLoading || d.seqs) return;
+  d.seqsLoading = true;
+  const r = await send(id, "get_seq");
+  d.seqsLoading = false;
+  if (r.ok && Array.isArray(r.seqs)) { d.seqs = r.seqs.map((s) => s.name).filter(Boolean); renderCard(id); }
+}
+
+function renderCard(id) {
+  const el = cardFor(id), d = live.get(id) || { status: null, events: [] }, st = d.status || {};
   const online = st.online === true;
   el.querySelector(".dot").className = "dot " + (online ? "on" : st.online === false ? "off" : "");
-  const [pc, pcCls] = pcState(st);
-  el.querySelector(".badge").textContent = online ? (st.busy ? "執行中…" : "在線") : st.online === false ? "離線" : "";
+  el.querySelector(".dev-name").textContent = devName(id);
+  const waiting = adding && adding.id === id && !online;
+  el.querySelector(".dev-sub").innerHTML = online ? pcLine(st) : waiting ? "等待板子第一次上線…" : st.online === false ? "板子離線（斷電或沒網路）" : "還沒收到板子的狀態";
+  const pill = el.querySelector(".pill");
+  pill.textContent = online ? (st.busy ? "執行中…" : "在線") : "離線";
+  pill.className = "pill " + (online ? (st.busy ? "warn" : "ok") : "bad");
+  el.querySelectorAll(".acts button").forEach((b) => { if (!b.classList.contains("arm")) b.disabled = !online || !!st.busy; });
+  if (online && !d.seqs) loadSeqs(id);
+  const has = (n) => !!(d.seqs && d.seqs.includes(n));
+  el.querySelector("[data-act=unlock]").hidden = !!d.seqs && !has("unlock");
+  el.querySelector("[data-act=standby]").hidden = !has("standby");
+  el.querySelector("[data-hold=restart]").hidden = !has("restart");
+  el.querySelector(".acts.more").hidden = !has("standby") && !has("restart");
   const rw = st.rwake === 1 ? "允許" : st.rwake === 0 ? '<span class="bad">未允許</span>' : '<span class="muted">尚未得知</span>';
-  el.querySelector(".facts").innerHTML = online ? `
-      <dt>電腦</dt><dd class="${pcCls}">${pc}</dd>
-      <dt>遠端喚醒</dt><dd>${rw}</dd>
-      <dt>PIN</dt><dd>${st.pin ? "已設定" : '<span class="warn">未設定</span>'}</dd>
-      <dt>最近一次</dt><dd>${esc(st.last) || '<span class="muted">—</span>'}</dd>
-      <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>
-      <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>`
-    : `<dt>狀態</dt><dd class="bad">設備離線：不在網路上或已斷電</dd>`;
-  el.querySelectorAll("button[data-act]").forEach((b) => { b.disabled = !online || (b.dataset.act !== "journal" && !!st.busy); });
+  el.querySelector(".facts").innerHTML = `
+    <dt>代號</dt><dd>${esc(id)}</dd>` + (online ? `
+    <dt>遠端喚醒</dt><dd>${rw}</dd>
+    <dt>PIN</dt><dd>${st.pin ? "已設定" : '<span class="muted">未設定</span>'}</dd>
+    <dt>最近一次</dt><dd>${esc(st.last) || '<span class="muted">—</span>'}</dd>
+    <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>
+    <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>` : "");
   el.querySelector("pre.log").textContent = d.events.slice().reverse().join("\n") || "（還沒有事件）";
+  const r = results.get(id), rEl = el.querySelector(".result");
+  rEl.className = "result" + (r ? " show " + (r.cls || "") : "");
+  rEl.innerHTML = r ? r.html : "";
+  if (r && r.force) rEl.querySelector("[data-force]").onclick = () => run(id, "unlock", true);
+  return el;
 }
 
-function showResult(id, html, cls) {
-  const r = devices.get(id).el.querySelector(".result");
-  r.className = "result show " + (cls || "");
-  r.innerHTML = html;
+function renderAll() {
+  const box = $("devices");
+  if (registry === null) { box.innerHTML = '<div class="card empty">讀取裝置清單…</div>'; return; }
+  const ids = registry.map((x) => x.id);
+  if (!ids.length) {
+    box.innerHTML = '<div class="card empty">還沒有裝置。按下方「＋ 新增裝置」加入第一台。</div>';
+  } else {
+    const empty = box.querySelector(".empty"); if (empty) empty.remove();
+    ids.forEach((id) => box.appendChild(renderCard(id)));   /* appendChild keeps the list in registry order */
+    [...cards.keys()].forEach((id) => { if (!ids.includes(id)) { cards.get(id).remove(); cards.delete(id); } });
+  }
+  const found = [...live.entries()].filter(([id, d]) => !ids.includes(id) && d.status && d.status.online === true);
+  $("foundCard").hidden = !found.length;
+  $("found").innerHTML = found.map(([id, d]) =>
+    `<div class="found"><span class="dot on"></span><span><b>${esc(id)}</b> <span class="muted">${esc(d.status.ssid || "")}</span></span><button class="primary" data-add="${esc(id)}">加入</button></div>`).join("");
+}
+
+$("found").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-add]");
+  if (!b) return;
+  const id = b.dataset.add;
+  const name = prompt("幫這台取個名字（例如：公司筆電、家裡筆電）", id);
+  if (name === null) return;
+  saveRegistry(registry.concat([{ id, name: name.trim() || id }]));
+});
+
+/* Two taps for anything that presses keys on the computer: first tap arms, second runs. */
+function armOrRun(btn, label, fn) {
+  if (btn.classList.contains("arm")) {
+    clearTimeout(btn._t); btn.classList.remove("arm"); btn.textContent = label; fn();
+    return;
+  }
+  btn.classList.add("arm"); btn.textContent = "再按一次確認";
+  btn._t = setTimeout(() => { btn.classList.remove("arm"); btn.textContent = label; }, ARM_MS);
 }
 
 async function act(id, what, btn) {
+  if (what === "unlock") { armOrRun(btn, "解鎖", () => run(id, "unlock", false)); return; }
+  if (what === "standby") { armOrRun(btn, "待機", () => run(id, "seq", false, "standby")); return; }
+  if (what === "wake") { await run(id, "wake", false); return; }
   if (what === "journal") {
     btn.disabled = true;
     const r = await send(id, "journal");
     btn.disabled = false;
-    const d = devices.get(id);
-    d.el.querySelector("details").open = true;
-    d.el.querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
+    cardFor(id).querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
     return;
   }
-  if (what === "unlock" && !confirm("解鎖「" + id + "」？\n會喚醒電腦並自動輸入 PIN。")) return;
-  if (what === "wake" && !confirm("喚醒「" + id + "」？")) return;
-  await run(id, what, false);
+  if (what === "rename") {
+    const name = prompt("新的名稱", devName(id));
+    if (name === null || !name.trim()) return;
+    saveRegistry(registry.map((x) => (x.id === id ? { id, name: name.trim() } : x)));
+    return;
+  }
+  if (what === "remove") {
+    if (!confirm("把「" + devName(id) + "」從清單移除？\n板子本身和它的雲端帳號不會被刪除；要徹底移除，請另外到 EMQX 刪掉帳號「" + id + "」。")) return;
+    results.delete(id);
+    saveRegistry(registry.filter((x) => x.id !== id));
+    /* clear its retained status so it does not show up again under 發現的裝置 until it reconnects */
+    client.publish("wakekey/" + id + "/status", "", { qos: 1, retain: true });
+    live.delete(id);
+    renderAll();
+  }
 }
 
-async function run(id, what, force) {
-  showResult(id, "送出中…");
-  const r = what === "unlock" ? await send(id, "unlock", { seq: "unlock", force }) : await send(id, "wake");
+/* what: "wake" | "unlock" (the board's own "unlock" sequence) | "seq" (another named sequence).
+   The 2-per-hour limit protects the PIN; sequences without a PIN (standby/restart) always force it. */
+async function run(id, what, force, seq) {
+  results.set(id, { html: "送出中…" }); renderCard(id);
+  const r = what === "wake" ? await send(id, "wake")
+          : await send(id, "unlock", { seq: what === "seq" ? seq : "unlock", force: what === "seq" ? true : force });
   if (r.rate_limited) {
-    showResult(id, esc(r.msg) + '<div class="row"><button class="primary" data-force>仍要執行</button></div>', "warn");
-    devices.get(id).el.querySelector("[data-force]").onclick = () => run(id, what, true);
-    return;
+    results.set(id, { html: esc(r.msg) + '<div class="row"><button class="primary" data-force>仍要執行</button></div>', cls: "warn", force: true });
+  } else {
+    results.set(id, {
+      html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && what === "unlock" ? '<div class="hint">按鍵過程在「詳細資料與紀錄」裡，大約 10–40 秒完成。</div>' : ""),
+      cls: r.ok ? "ok" : "bad",
+    });
   }
-  showResult(id, (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && what === "unlock" ? "<div class='hint'>過程會顯示在下方「即時事件」，大約 10–40 秒完成。</div>" : ""),
-             r.ok ? "ok" : "bad");
-  if (r.ok) devices.get(id).el.querySelector("details").open = true;
+  renderCard(id);
 }
 
+/* ---------- add device ---------- */
+$("addBtn").onclick = () => { adding = { stage: 1 }; renderAdd(); };
+
+function renderAdd() {
+  const c = $("addCard");
+  if (!adding) { c.hidden = true; c.innerHTML = ""; $("addBtn").hidden = false; return; }
+  c.hidden = false; $("addBtn").hidden = true;
+  if (adding.stage === 1) {
+    c.innerHTML = `
+      <h2>新增裝置</h2>
+      <label for="aName">名稱（顯示用）</label>
+      <input type="text" id="aName" placeholder="例如：家裡筆電">
+      <label for="aId">代號（英文小寫、數字、-，2–16 字；之後不能改）</label>
+      <input type="text" id="aId" autocapitalize="off" spellcheck="false" placeholder="例如：home">
+      <label class="radio"><input type="radio" name="aKind" value="new" checked><span><b>新的板子</b>：產生雲端帳號和配對碼</span></label>
+      <label class="radio"><input type="radio" name="aKind" value="old"><span><b>已經配對過的板子</b>：只加到清單（雲端帳號已經存在）</span></label>
+      <div class="result" id="aMsg"></div>
+      <div class="row"><button id="aCancel">取消</button><button class="primary" id="aNext">下一步</button></div>`;
+    $("aCancel").onclick = () => { adding = null; renderAdd(); };
+    $("aNext").onclick = () => {
+      const name = $("aName").value.trim(), id = $("aId").value.trim().toLowerCase();
+      const kind = c.querySelector("input[name=aKind]:checked").value;
+      const msg = $("aMsg");
+      const bad = (t) => { msg.className = "result show bad"; msg.textContent = t; };
+      if (!name) return bad("請填名稱");
+      if (!ID_RE.test(id)) return bad("代號只能用英文小寫、數字和 -，2–16 字，開頭不能是 -");
+      if (id === "wk-admin") return bad("這個代號保留給控制網頁");
+      if (registry.some((x) => x.id === id)) return bad("清單裡已經有這個代號");
+      saveRegistry(registry.concat([{ id, name }]));
+      if (kind === "old") { adding = null; renderAdd(); return; }
+      const pw = randomPassword(24);
+      adding = { stage: 2, id, name, pw, code: pairingCode(login.host, id, pw) };
+      renderAdd();
+    };
+    return;
+  }
+  const a = adding, online = (live.get(a.id) || {}).status?.online === true;
+  c.innerHTML = `
+    <h2>新增「${esc(a.name)}」</h2>
+    <div class="hint" style="margin-top:0">這頁的密碼只顯示這一次。照順序做完再關掉。</div>
+    <div class="step"><b class="n">1</b><b>在 EMQX 建立這台的帳號</b>
+      <div class="hint">登入 <a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener">EMQX 控制台</a> → 你的部署 → 「存取控制」→「認證」→「使用者」→ 新增，填入：</div>
+      <div class="copy"><span class="muted">帳號</span><code>${esc(a.id)}</code><button data-copy="${esc(a.id)}">複製</button></div>
+      <div class="copy"><span class="muted">密碼</span><code>${esc(a.pw)}</code><button data-copy="${esc(a.pw)}">複製</button></div>
+      <div class="hint">權限不用另外設：每個帳號本來就只能用自己的 wakekey/代號/ 頻道。</div>
+    </div>
+    <div class="step"><b class="n">2</b><b>把配對碼存進板子</b>
+      <div class="hint">板子連上 Wi-Fi 後，用同一個網路打開板子的網頁 → 「設定」→「雲端（MQTT）」→ 貼上配對碼 → 儲存配對碼。</div>
+      <div class="copy"><code>${esc(a.code)}</code><button data-copy="${esc(a.code)}">複製</button></div>
+      <div class="qr" id="aQr"></div>
+    </div>
+    <div class="step"><b class="n">3</b><b>等板子上線</b>
+      <div class="hint">${online ? '<span class="ok">✓ 已上線，可以按「完成」</span>' : "板子儲存配對碼後約 20 秒會出現在上面的清單，狀態變成「在線」。"}</div>
+    </div>
+    <div class="row"><button class="primary" id="aDone">完成</button></div>`;
+  c.querySelectorAll("button[data-copy]").forEach((b) => { b.onclick = () => copy(b.dataset.copy, b); });
+  try { new QRCode($("aQr"), { text: a.code, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L }); } catch (e) { $("aQr").remove(); }
+  $("aDone").onclick = () => {
+    if (!online && !confirm("板子還沒上線。現在關掉的話，這組密碼和配對碼就看不到了，要重來得先在 EMQX 刪掉帳號。確定關掉？")) return;
+    adding = null; renderAdd(); renderAll();
+  };
+}
+/* refresh the wizard's "等板子上線" line when that device comes online */
+setInterval(() => {
+  if (adding && adding.stage === 2 && (live.get(adding.id) || {}).status?.online === true && !adding.seenOnline) {
+    adding.seenOnline = true; renderAdd();
+  }
+}, 1000);
+
+/* ---------- login / logout ---------- */
 function showLogin(msg, prefill) {
-  $("login").hidden = false; $("foot").hidden = true;
+  $("login").hidden = false; $("app").hidden = true; $("foot").hidden = true;
   const saved = prefill || loadLogin();
-  if (saved) { $("host").value = saved.host || ""; $("user").value = saved.user || "wk-admin"; }
-  $("remember").checked = !!loadLogin();
+  if (saved) {
+    $("host").value = saved.host || ""; $("user").value = saved.user || "wk-admin";
+    $("pass").value = saved.pass || "";      /* 登出 keeps the saved password: just press 連線 */
+  }
+  $("remember").checked = loadLogin() ? true : $("remember").checked;
   const m = $("loginMsg");
   m.className = "result" + (msg ? " show bad" : ""); m.textContent = msg || "";
   setConn("");
@@ -286,14 +523,21 @@ function showLogin(msg, prefill) {
 
 $("loginForm").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const login = { host: $("host").value.trim(), user: $("user").value.trim(), pass: $("pass").value };
-  if ($("remember").checked) saveLogin(login); else clearLogin();
+  const l = { host: normHost($("host").value), user: $("user").value.trim(), pass: $("pass").value };
+  $("host").value = l.host;
+  if ($("remember").checked) saveLogin(l); else clearLogin();
   $("pass").value = "";
-  connect(login, false);
+  connect(l, false);
 });
-$("logout").onclick = () => { if (client) client.end(true); client = null; devices.clear(); $("devices").innerHTML = ""; showLogin(); };
-$("forget").onclick = () => { clearLogin(); $("logout").onclick(); };
-setInterval(() => devices.forEach((d, id) => d.status && render(id)), 30000);
+function disconnect() {
+  if (client) client.end(true);
+  client = null; registry = null; adding = null;
+  live.clear(); cards.clear(); results.clear();
+  $("devices").innerHTML = ""; renderAdd();
+}
+$("logout").onclick = () => { disconnect(); showLogin(); };
+$("forget").onclick = () => { clearLogin(); disconnect(); $("pass").value = ""; showLogin(); $("pass").value = ""; };
+setInterval(() => { if (registry) registry.forEach((x) => renderCard(x.id)); }, 30000);
 
 const saved = loadLogin();
 if (saved && saved.pass) connect(saved, true); else showLogin();

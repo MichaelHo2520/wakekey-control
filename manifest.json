@@ -1,0 +1,14 @@
+{
+  "name": "WakeKey",
+  "short_name": "WakeKey",
+  "description": "遠端喚醒、解鎖電腦",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#1f6feb",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
