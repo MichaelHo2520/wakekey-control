@@ -423,10 +423,17 @@ async function act(id, what, btn) {
 
 /* what: "wake" | "unlock" (the board's own "unlock" sequence) | "seq" (another named sequence).
    The 2-per-hour limit protects the PIN; sequences without a PIN (standby/restart) always force it. */
-async function run(id, what, force, seq) {
+async function run(id, what, force, seq, retry) {
   results.set(id, { html: "送出中…" }); renderCard(id);
   const r = what === "wake" ? await send(id, "wake")
           : await send(id, "unlock", { seq: what === "seq" ? seq : "unlock", force: what === "seq" ? true : force });
+  /* The board refuses a wake within 30 s of the computer going to sleep; try again for the user. */
+  if (what === "wake" && !r.ok && /剛進入睡眠/.test(r.msg || "") && (retry || 0) < 3) {
+    results.set(id, { html: "電腦剛進入睡眠，板子要等 30 秒才能喚醒；10 秒後自動再試（第 " + ((retry || 0) + 1) + "／3 次）…", cls: "warn" });
+    renderCard(id);
+    setTimeout(() => run(id, "wake", false, null, (retry || 0) + 1), 10000);
+    return;
+  }
   if (r.rate_limited) {
     results.set(id, { html: esc(r.msg) + '<div class="row"><button class="primary" data-force>仍要執行</button></div>', cls: "warn", force: true });
   } else {
