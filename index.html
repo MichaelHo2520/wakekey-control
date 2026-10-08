@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme="aurora" data-scheme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1f6feb">
+<meta name="theme-color" content="#eef0f7">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="WakeKey">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -13,204 +14,398 @@
 <!-- Static page: no secrets in here. The broker address and the wk-admin password are
      typed in on first use and, if the user asks, kept in this browser only. The device
      list lives on the broker as a retained message only wk-admin can read. -->
+<script>
+/* Apply the saved look before the first paint (no flash of the wrong theme). */
+(function () {
+  try {
+    var v = JSON.parse(localStorage.getItem("wakekey.look.v1") || "{}"), h = document.documentElement;
+    if (/^(aurora|ocean|sunset|graphite)$/.test(v.theme)) h.dataset.theme = v.theme;
+    var dark = v.mode === "dark" || (v.mode !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+    h.dataset.scheme = dark ? "dark" : "light";
+  } catch (e) {}
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
+/* ======================= tokens ======================= */
 :root {
-  --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #dde2e7;
-  --accent: #1f6feb; --accent-text: #fff; --ok: #1a7f37; --warn: #b35900; --bad: #cf222e;
-  --chip: #eef1f4; --confirm: #b35900; --sleep: #5b5bd6;
-  --ok-bg: #e9f6ec; --sleep-bg: #eeeefc; --warn-bg: #fdf1e3;
+  --r-xl: 30px; --r-lg: 24px; --r-md: 18px; --r-sm: 13px;
+  --ok: #16a34a; --warn: #d97706; --bad: #e11d48; --sleep: #6d5dfc;
+  font-synthesis: none;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1116; --card: #171b22; --text: #e6edf3; --muted: #8b96a2; --line: #2b323c;
-    --accent: #2f81f7; --accent-text: #fff; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
-    --chip: #222832; --confirm: #d29922; --sleep: #9a9cf8;
-    --ok-bg: #15281c; --sleep-bg: #1d1e36; --warn-bg: #2d2414;
-  }
+html[data-theme=aurora]   { --a1: #7b61ff; --a2: #1fb6e8; --a3: #ff6fb5; }
+html[data-theme=ocean]    { --a1: #1d6ff2; --a2: #12c2b8; --a3: #5865f2; }
+html[data-theme=sunset]   { --a1: #f2542d; --a2: #e8367a; --a3: #ffb02e; }
+html[data-theme=graphite] { --a1: #3f4654; --a2: #6b7280; --a3: #9aa3b2; }
+html[data-scheme=light] {
+  color-scheme: light; --blob: .85;
+  --base: #eef0f7; --text: #0d0f1a; --muted: rgba(13, 15, 26, .56); --faint: rgba(13, 15, 26, .36);
+  --glass: rgba(255, 255, 255, .5); --glass-2: rgba(255, 255, 255, .42); --glass-3: rgba(255, 255, 255, .7);
+  --edge: rgba(255, 255, 255, .78); --hi: rgba(255, 255, 255, .95); --sheen: rgba(255, 255, 255, .6);
+  --shadow: rgba(30, 36, 80, .13); --line: rgba(13, 15, 26, .08); --solid: #f7f8fc;
+  --field: rgba(255, 255, 255, .65);
 }
-* { box-sizing: border-box; }
+html[data-scheme=dark] {
+  color-scheme: dark;
+  --base: #05060b; --text: #f3f4f8; --muted: rgba(235, 236, 245, .6); --faint: rgba(235, 236, 245, .38);
+  --glass: rgba(30, 32, 44, .5); --glass-2: rgba(255, 255, 255, .07); --glass-3: rgba(255, 255, 255, .12);
+  --edge: rgba(255, 255, 255, .13); --hi: rgba(255, 255, 255, .2); --sheen: rgba(255, 255, 255, .08);
+  --shadow: rgba(0, 0, 0, .5); --line: rgba(255, 255, 255, .08); --solid: #161822; --blob: .55;
+  --field: rgba(0, 0, 0, .25);
+  --ok: #34d399; --warn: #fbbf24; --bad: #fb7185; --sleep: #a5a0ff;
+}
+html[data-scheme=dark][data-theme=graphite] { --a1: #8b93a3; --a2: #c2c8d2; --a3: #5b6475; }
+
+/* ======================= base ======================= */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { background: var(--base); }
 body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
-  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  margin: 0; min-height: 100dvh; color: var(--text);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  padding: max(10px, env(safe-area-inset-top)) 14px max(28px, env(safe-area-inset-bottom));
 }
-main { max-width: 560px; margin: 0 auto; }
-h1 { font-size: 1.35rem; margin: 4px 0 16px; display: flex; align-items: center; gap: 10px; }
-h1 .conn { font-size: .8rem; font-weight: 500; color: var(--muted); margin-left: auto; }
-h2 { font-size: 1.05rem; margin: 0 0 8px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
-label { display: block; font-size: .9rem; color: var(--muted); margin: 10px 0 4px; }
-input[type=range] { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
+a { color: inherit; text-decoration: none; }
+svg { display: block; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* soft color field behind the glass */
+.bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.bg i { position: absolute; width: 75vmax; height: 75vmax; border-radius: 50%; opacity: var(--blob); }
+.bg .b1 { background: radial-gradient(circle, var(--a1) 0, transparent 64%); top: -26vmax; left: -24vmax; animation: drift1 26s ease-in-out infinite alternate; }
+.bg .b2 { background: radial-gradient(circle, var(--a2) 0, transparent 64%); bottom: -28vmax; right: -26vmax; animation: drift2 30s ease-in-out infinite alternate; }
+.bg .b3 { background: radial-gradient(circle, var(--a3) 0, transparent 62%); top: 22%; left: 30%; width: 60vmax; height: 60vmax; opacity: calc(var(--blob) * .7); animation: drift3 34s ease-in-out infinite alternate; }
+@keyframes drift1 { to { transform: translate(8vmax, 6vmax) scale(1.08); } }
+@keyframes drift2 { to { transform: translate(-7vmax, -5vmax) scale(1.1); } }
+@keyframes drift3 { to { transform: translate(-10vmax, 8vmax) scale(.92); } }
+
+/* ======================= glass ======================= */
+.glass {
+  background: linear-gradient(145deg, var(--sheen) 0%, transparent 42%), var(--glass);
+  -webkit-backdrop-filter: blur(26px) saturate(180%); backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid var(--edge); border-radius: var(--r-xl);
+  box-shadow: inset 0 1px 0 var(--hi), inset 0 -1px 0 rgba(255, 255, 255, .04), 0 12px 36px var(--shadow);
+}
+.inset { background: var(--glass-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { background: var(--solid); } }
+@media (prefers-reduced-transparency: reduce) { .glass { background: var(--solid); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+@media (prefers-reduced-motion: reduce) { .bg i { animation: none; } *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* ======================= controls ======================= */
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; border: 0; background: none; padding: 0; }
+button:disabled { opacity: .4; cursor: default; }
+:focus-visible { outline: 2px solid var(--a1); outline-offset: 2px; }
+.ib { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--text);
+  background: var(--glass-3); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--hi); transition: transform .12s; }
+.ib svg { width: 21px; height: 21px; }
+.ib:active { transform: scale(.92); }
+.gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 99px; font-weight: 600;
+  background: var(--glass-3); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--hi), 0 4px 14px var(--shadow); transition: transform .12s, opacity .2s; }
+.gbtn svg { width: 19px; height: 19px; }
+.gbtn:active:not(:disabled) { transform: scale(.97); }
+.gbtn.primary { color: #fff; border-color: rgba(255, 255, 255, .35);
+  background: linear-gradient(160deg, rgba(255, 255, 255, .28), transparent 55%), linear-gradient(135deg, var(--a1), var(--a2)); }
+.gbtn.danger { color: #fff; border-color: rgba(255, 255, 255, .3); background: linear-gradient(160deg, rgba(255, 255, 255, .25), transparent 55%), linear-gradient(135deg, #f43f5e, #e11d48); }
+.gbtn.ghost { background: transparent; box-shadow: none; border-color: transparent; color: var(--muted); }
+.gbtn.wide { width: 100%; padding: 15px; font-size: 1.02rem; }
 input[type=text], input[type=password], select {
-  width: 100%; padding: 11px 12px; font-size: 1rem; border-radius: 10px;
-  border: 1px solid var(--line); background: var(--bg); color: var(--text);
-}
-.check { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text); }
-button {
-  font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--chip);
-  color: var(--text); padding: 10px 14px; cursor: pointer; touch-action: manipulation;
-}
-button:disabled { opacity: .45; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-button.wide { width: 100%; padding: 14px; font-size: 1.05rem; margin-top: 12px; }
-button.link { background: none; border: none; color: var(--accent); padding: 6px 4px; }
-.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
-.acts button { padding: 18px 8px; font-size: 1.2rem; font-weight: 600; border-radius: 14px; }
-button.arm { background: var(--confirm); border-color: var(--confirm); color: #fff; }
-.acts.more { margin-top: 10px; }
-.acts.more button { padding: 12px 8px; font-size: 1rem; font-weight: 500; }
-.acts .muted { grid-column: 1 / -1; text-align: center; padding: 12px 0; }
-button { position: relative; overflow: hidden; }
-button.hold::after { content: ""; position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--bad);
-  transform-origin: left; animation: hold 2s linear forwards; }
-@keyframes hold { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.row button { flex: 1 1 auto; }
-.tools { display: contents; }
-.secform { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
-.secform h2 { font-size: .98rem; margin: 0; }
-label.color { display: flex; align-items: center; gap: 10px; color: var(--text); margin: 8px 0; }
-label.color input { width: 44px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
-.dev-head { display: flex; align-items: center; gap: 10px; }
-.dev-name { font-size: 1.2rem; font-weight: 700; }
-.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); flex: none; }
-.dot.on { background: var(--ok); } .dot.off { background: var(--bad); }
-.pill { margin-left: auto; font-size: .82rem; padding: 3px 10px; border-radius: 99px; background: var(--chip); color: var(--muted); white-space: nowrap; }
-.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
-.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0 0; font-size: .92rem; }
-.facts dt { color: var(--muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
-.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .muted { color: var(--muted); }
-.result { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--chip); font-size: .92rem; display: none; }
-.result.show { display: block; }
-details { margin-top: 12px; }
-summary { cursor: pointer; color: var(--muted); font-size: .92rem; }
-.hint { font-size: .86rem; color: var(--muted); margin-top: 8px; }
-.empty { text-align: center; color: var(--muted); padding: 22px 8px; }
-.found { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
-.found:first-of-type { border-top: none; }
-.found span { flex: 1; }
-.step { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
-.step b.n { display: inline-block; width: 1.6em; height: 1.6em; line-height: 1.6em; text-align: center; border-radius: 50%; background: var(--accent); color: #fff; font-size: .85rem; margin-right: 6px; }
-.copy { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
-.copy code { flex: 1; padding: 9px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-size: .85rem; overflow-wrap: anywhere; }
-.qr { background: #fff; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 8px; }
-.radio { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; color: var(--text); font-size: .95rem; }
-.radio input { margin-top: 5px; }
-footer { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 8px; }
-footer button { padding: 6px 10px; font-size: .8rem; }
-/* icons */
-.i { display: inline-flex; vertical-align: -5px; margin-right: 6px; }
-.i svg, .state .ic svg { width: 22px; height: 22px; }
-.acts.more .i svg { width: 18px; height: 18px; }
-.acts.more .i { vertical-align: -3px; }
-.acts button small { display: block; font-size: .75rem; font-weight: 500; opacity: .75; margin-top: 1px; }
-.acts.more button:last-child:nth-child(odd) { grid-column: 1 / -1; }
-/* computer state on each card */
-.state { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--chip); }
-.state .ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--card); color: var(--muted); }
-.state .t { font-weight: 700; }
-.state .s { font-size: .86rem; color: var(--muted); margin-top: 1px; }
-.state button { margin-top: 8px; padding: 7px 12px; font-size: .9rem; }
-.state.awake { background: var(--ok-bg); } .state.awake .ic { color: var(--ok); }
-.state.sleep { background: var(--sleep-bg); } .state.sleep .ic { color: var(--sleep); }
-.state.warn { background: var(--warn-bg); } .state.warn .ic { color: var(--warn); }
-/* wake progress */
-.steps { list-style: none; margin: 0; padding: 0; }
-.steps li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
-.steps .m { width: 18px; display: grid; place-items: center; flex: none; font-weight: 700; }
-.steps li.wait { color: var(--muted); }
-.steps li.wait .m::before { content: "•"; }
-.steps li.run .m::before { content: ""; width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
-.steps li.ok .m::before { content: "✓"; color: var(--ok); }
-.steps li.bad .m::before { content: "✗"; color: var(--bad); }
-.steps li.warn .m::before { content: "!"; color: var(--warn); }
-.steps .x { margin-left: auto; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.result .msg { margin-top: 6px; }
-.result .row { margin-top: 8px; }
-.guide { margin: 6px 0 0; padding-left: 20px; } .guide li { margin: 4px 0; }
+  width: 100%; padding: 12px 14px; font: inherit; color: var(--text); border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--field); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06); }
+input[type=range] { width: 100%; accent-color: var(--a1); }
+label.f { display: block; font-size: .85rem; color: var(--muted); margin: 14px 0 6px; }
+.switch { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; }
+.switch i { width: 50px; height: 30px; border-radius: 99px; background: var(--line); flex: none; position: relative; transition: background .2s; box-shadow: inset 0 0 0 1px var(--line); }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); transition: transform .2s; }
+.switch input:checked + i { background: linear-gradient(135deg, var(--a1), var(--a2)); }
+.switch input:checked + i::after { transform: translateX(20px); }
+.switch input:focus-visible + i { outline: 2px solid var(--a1); outline-offset: 2px; }
+
+/* ======================= header ======================= */
+.top { position: sticky; top: max(10px, env(safe-area-inset-top)); z-index: 10; display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px 7px 12px; border-radius: 99px; max-width: 1120px; margin: 0 auto 18px; }
+.brand { display: flex; align-items: center; gap: 9px; min-width: 0; font-weight: 700; font-size: 1.08rem; letter-spacing: .01em; }
+.brand img { width: 28px; height: 28px; border-radius: 8px; box-shadow: 0 2px 8px var(--shadow); flex: none; }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top #back { margin-left: -4px; }
+.conn { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.conn.ok::before { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+.conn.warn::before { background: var(--warn); } .conn.bad::before { background: var(--bad); }
+.conn.ok b { display: none; }
+.conn b { font-weight: 500; }
+.spacer { flex: 1; }
+.themes { display: flex; gap: 6px; padding: 4px; border-radius: 99px; background: var(--glass-2); border: 1px solid var(--line); }
+.sw { width: 24px; height: 24px; border-radius: 50%; position: relative; background: linear-gradient(135deg, var(--s1), var(--s2)); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .5), 0 1px 3px rgba(0, 0, 0, .2); transition: transform .15s; }
+.sw[aria-checked=true] { box-shadow: 0 0 0 2px var(--base), 0 0 0 4px var(--s1); }
+.sw:active { transform: scale(.88); }
+.top .ib { width: 36px; height: 36px; }
+.top .ib svg { width: 19px; height: 19px; }
+
+/* ======================= layout ======================= */
+main { max-width: 1120px; margin: 0 auto; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 460px)); justify-content: center; align-items: start; }
+.narrow { max-width: 560px; margin: 0 auto; }
+.view { animation: viewin .25s ease-out; }
+@keyframes viewin { from { opacity: 0; transform: translateY(6px); } }
+.home-foot { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+
+/* ======================= device card ======================= */
+.dev { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.dev-h { display: flex; align-items: center; gap: 10px; padding: 2px 2px 0 6px; }
+.dev-h h2 { margin: 0; font-size: 1.18rem; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { font-size: .74rem; font-weight: 600; padding: 4px 10px; border-radius: 99px; background: var(--glass-2); border: 1px solid var(--line); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+
+.hero { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: var(--r-lg); background: var(--glass-2); border: 1px solid var(--line); }
+.orb { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; color: #fff; flex: none;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .35), transparent 50%), var(--og, linear-gradient(135deg, #9aa3b2, #6b7280));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 8px 20px -6px var(--oc, rgba(0, 0, 0, .3)); }
+.orb svg { width: 30px; height: 30px; }
+.orb.awake { --og: linear-gradient(135deg, #34d399, #059669); --oc: rgba(5, 150, 105, .55); }
+.orb.sleep { --og: linear-gradient(135deg, #8b7cff, #4f46e5); --oc: rgba(79, 70, 229, .55); }
+.orb.warn  { --og: linear-gradient(135deg, #fbbf24, #ea580c); --oc: rgba(234, 88, 12, .5); }
+.orb.off   { --og: linear-gradient(135deg, #a1a8b5, #6b7280); --oc: rgba(0, 0, 0, .25); }
+.hero-t { min-width: 0; flex: 1; }
+.hero-t b { display: block; font-size: 1.12rem; letter-spacing: .01em; }
+.hero-t span { display: block; font-size: .84rem; color: var(--muted); margin-top: 1px; }
+.hero .gbtn { margin-top: 8px; padding: 8px 14px; font-size: .86rem; }
+
+.acts-main { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.act { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-lg); text-align: left; position: relative; overflow: hidden;
+  background: var(--glass-3); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--hi), 0 6px 18px -8px var(--shadow); transition: transform .12s, background .2s; }
+.act:active:not(:disabled) { transform: scale(.97); }
+.act .lbl { font-weight: 700; font-size: 1.05rem; }
+.tile { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #fff; flex: none;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .35), transparent 52%), var(--tg, linear-gradient(135deg, var(--a1), var(--a2)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 6px 14px -6px var(--tc, rgba(0, 0, 0, .35)); }
+.tile svg { width: 24px; height: 24px; }
+.t-sun  { --tg: linear-gradient(135deg, #ffc23d, #fb7d10); --tc: rgba(251, 125, 16, .6); }
+.t-key  { --tg: linear-gradient(135deg, var(--a1), var(--a2)); --tc: color-mix(in srgb, var(--a1) 60%, transparent); }
+.t-moon { --tg: linear-gradient(135deg, #8b7cff, #4f46e5); --tc: rgba(79, 70, 229, .6); }
+.t-red  { --tg: linear-gradient(135deg, #fb7185, #e11d48); --tc: rgba(225, 29, 72, .55); }
+.t-teal { --tg: linear-gradient(135deg, #2dd4bf, #0284c7); --tc: rgba(2, 132, 199, .55); }
+.t-amber{ --tg: linear-gradient(135deg, #fbbf24, #ea580c); --tc: rgba(234, 88, 12, .5); }
+.t-gray { --tg: linear-gradient(135deg, #a1a8b5, #5b6475); --tc: rgba(0, 0, 0, .3); }
+
+.acts-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.chip { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 2px; border-radius: var(--r-md); position: relative; }
+.chip .ci { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; color: var(--tcol, var(--text)); position: relative;
+  background: var(--glass-3); border: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--hi), 0 6px 16px -8px var(--shadow); transition: transform .12s; }
+.chip .ci svg { width: 23px; height: 23px; }
+.chip span.l { font-size: .78rem; font-weight: 600; line-height: 1.15; text-align: center; }
+.chip small { display: block; font-size: .66rem; color: var(--muted); font-weight: 500; }
+.chip:active:not(:disabled) .ci { transform: scale(.92); }
+.chip.c-moon { --tcol: var(--sleep); } .chip.c-red { --tcol: var(--bad); } .chip.c-teal { --tcol: #0ea5e9; } .chip.c-sun { --tcol: #f59e0b; } .chip.c-key { --tcol: var(--a1); }
+/* two-tap arm and long press */
+.act.arm, .chip.arm .ci { background: linear-gradient(135deg, #f59e0b, #ea580c); color: #fff; border-color: transparent; }
+.act.arm .tile { background: rgba(255, 255, 255, .25); box-shadow: none; }
+.chip .ring { position: absolute; inset: -4px; border-radius: 50%; pointer-events: none; opacity: 0; }
+.chip.hold .ring { opacity: 1; background: conic-gradient(var(--bad) calc(var(--p, 0) * 1%), transparent 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); }
+
+/* result / progress */
+.result { padding: 12px 14px; border-radius: var(--r-md); background: var(--glass-2); border: 1px solid var(--line); font-size: .9rem; }
+.result.ok { border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.result.bad { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.result.warn { border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.result .msg { margin-top: 8px; color: var(--muted); }
+.result .gbtn { margin-top: 10px; padding: 8px 14px; font-size: .86rem; }
+.line { display: flex; align-items: center; gap: 8px; }
+.line svg { width: 18px; height: 18px; flex: none; }
+.line.ok { color: var(--ok); } .line.bad { color: var(--bad); }
+.stepper { display: flex; align-items: flex-start; }
+.st { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; }
+.st .m { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--glass-3); border: 1px solid var(--line); color: var(--faint); }
+.st .m svg { width: 16px; height: 16px; }
+.st span { font-size: .74rem; color: var(--muted); font-weight: 600; }
+.st em { font-style: normal; font-size: .72rem; color: var(--faint); font-variant-numeric: tabular-nums; min-height: 1em; }
+.st.ok .m { background: var(--ok); color: #fff; border-color: transparent; }
+.st.bad .m { background: var(--bad); color: #fff; border-color: transparent; }
+.st.warn .m { background: var(--warn); color: #fff; border-color: transparent; }
+.st.run .m { border: 2px solid var(--a1); border-top-color: transparent; animation: spin .8s linear infinite; }
+.stepper .bar { flex: 1; height: 2px; border-radius: 2px; background: var(--line); margin: 13px -6px 0; }
+.stepper .bar.ok { background: var(--ok); }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* journal timeline */
-.tl { list-style: none; margin: 10px 0 0; padding: 0; max-height: 340px; overflow: auto; }
-.tl li { display: grid; grid-template-columns: 10px auto 1fr; gap: 9px; align-items: baseline; padding: 5px 0; border-top: 1px solid var(--line); font-size: .86rem; }
+.guide { margin: 8px 0 0; padding-left: 20px; color: var(--text); } .guide li { margin: 5px 0; }
+.guide b { font-variant-numeric: tabular-nums; }
+
+/* recent activity */
+.recent { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-md); font-size: .85rem; color: var(--muted); }
+.recent:hover { background: var(--glass-2); }
+.recent .k { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+.recent .x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent time { font-variant-numeric: tabular-nums; flex: none; }
+.recent svg { width: 16px; height: 16px; flex: none; opacity: .6; }
+
+
+/* ======================= device page ======================= */
+.page-h { display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 14px; }
+.page-h .orb { width: 48px; height: 48px; border-radius: 15px; }
+.page-h .orb svg { width: 26px; height: 26px; }
+.page-h b { display: block; font-size: 1.1rem; }
+.page-h span { display: block; font-size: .84rem; color: var(--muted); }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 99px; margin-bottom: 14px; }
+.seg a { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 6px; border-radius: 99px; font-weight: 600; font-size: .92rem; color: var(--muted); transition: background .2s, color .2s; }
+.seg a svg { width: 18px; height: 18px; }
+.seg a[aria-current=page] { color: var(--text); background: var(--glass-3); box-shadow: inset 0 1px 0 var(--hi), 0 3px 10px var(--shadow); }
+.group { padding: 6px 16px; margin-bottom: 14px; }
+.group > h3 { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; font-size: .98rem; }
+.gi { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; flex: none;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .35), transparent 52%), var(--tg, linear-gradient(135deg, var(--a1), var(--a2))); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4); }
+.gi svg { width: 18px; height: 18px; }
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); min-height: 52px; }
+.row:first-child, h3 + .row { border-top: none; }
+.row .ri { color: var(--muted); flex: none; } .row .ri svg { width: 20px; height: 20px; }
+.row .rl { flex: 1; min-width: 0; }
+.row .rv { text-align: right; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; max-width: 60%; }
+.row .rv .ok { color: var(--ok); } .row .rv .bad { color: var(--bad); } .row .rv .warn { color: var(--warn); } .row .rv .muted { color: var(--faint); }
+button.row { width: 100%; text-align: left; }
+button.row .rl { font-weight: 600; }
+button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--bad); }
+.row > svg.chev { width: 16px; height: 16px; opacity: .45; flex: none; }
+.fields { padding: 2px 0 6px; }
+.fields .hint { font-size: .8rem; color: var(--muted); margin: 10px 0 0; }
+.save-row { display: flex; justify-content: flex-end; padding: 6px 0 12px; }
+[data-sec] .save-row { display: none; }
+[data-sec].dirty .save-row { display: flex; animation: viewin .2s ease-out; }
+.group > h3 .ib { margin-left: auto; width: 30px; height: 30px; background: none; border: none; box-shadow: none; color: var(--muted); }
+.group > h3 .ib svg { width: 19px; height: 19px; }
+.sel { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.sel span { flex: none; min-width: 64px; font-size: .92rem; }
+.sel select { flex: 1; min-width: 0; padding: 10px 12px; }
+.save-row .gbtn { padding: 10px 20px; }
+.lvl { float: right; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px 12px; margin-top: 6px; }
+.color { display: flex; align-items: center; gap: 10px; font-size: .88rem; cursor: pointer; }
+.color input { width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 2px solid var(--edge); background: none; overflow: hidden; cursor: pointer; flex: none; }
+.color input::-webkit-color-swatch-wrapper { padding: 0; } .color input::-webkit-color-swatch { border: none; border-radius: 50%; }
+.color input::-moz-color-swatch { border: none; border-radius: 50%; }
+
+/* timeline */
+.tl { list-style: none; margin: 0; padding: 4px 0; }
+.tl li { display: grid; grid-template-columns: 10px auto 1fr; gap: 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line); font-size: .88rem; }
 .tl li:first-child { border-top: none; }
-.tl .k { width: 8px; height: 8px; border-radius: 50%; background: var(--line); align-self: center; }
-.tl [data-k=ok] .k { background: var(--ok); } .tl [data-k=bad] .k { background: var(--bad); }
-.tl [data-k=sleep] .k { background: var(--sleep); } .tl [data-k=warn] .k { background: var(--warn); }
-.tl [data-k=boot] .k { background: var(--accent); }
+.tl .k { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); align-self: center; }
 .tl time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: .8rem; }
 .tl span { overflow-wrap: anywhere; }
+/* event kinds: card's latest line and the timeline */
+:is(.tl, .recent) [data-k=ok] .k, .recent[data-k=ok] .k { background: var(--ok); }
+:is(.tl, .recent) [data-k=bad] .k, .recent[data-k=bad] .k { background: var(--bad); }
+:is(.tl, .recent) [data-k=sleep] .k, .recent[data-k=sleep] .k { background: var(--sleep); }
+:is(.tl, .recent) [data-k=warn] .k, .recent[data-k=warn] .k { background: var(--warn); }
+:is(.tl, .recent) [data-k=boot] .k, .recent[data-k=boot] .k { background: var(--a1); }
 .tl [data-k=bad] span { color: var(--bad); }
 .tl [data-k=boot] span { font-weight: 600; }
-.tl-empty { color: var(--muted); font-size: .86rem; margin-top: 10px; }
-/* bottom sheet (replaces prompt / confirm) */
-.sheet-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; animation: fade .15s; }
-.sheet { background: var(--card); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 20px 16px max(20px, env(safe-area-inset-bottom)); animation: up .18s ease-out; }
-.sheet h3 { margin: 0 0 4px; font-size: 1.1rem; }
-.sheet p { margin: 6px 0 0; color: var(--muted); font-size: .93rem; white-space: pre-line; }
-.sheet input { margin-top: 12px; }
-.sheet .row { margin-top: 16px; }
-.sheet .row button { padding: 13px; font-size: 1rem; }
-button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
-@keyframes up { from { transform: translateY(40px); opacity: 0; } }
+.empty { text-align: center; color: var(--muted); padding: 36px 16px; }
+.empty .orb { margin: 0 auto 14px; }
+
+/* found devices, wizard, account, login */
+.found { padding: 6px 16px; margin-bottom: 16px; }
+.step { padding: 14px 0; border-top: 1px solid var(--line); }
+.step:first-of-type { border-top: none; }
+.step .n { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: .8rem; font-weight: 700; margin-right: 8px; background: linear-gradient(135deg, var(--a1), var(--a2)); }
+.copy { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.copy code { flex: 1; padding: 10px 12px; border-radius: var(--r-sm); background: var(--field); border: 1px solid var(--line); font: .84rem ui-monospace, "SF Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.copy .k { width: 40px; font-size: .82rem; color: var(--muted); flex: none; }
+.qr { background: #fff; padding: 10px; border-radius: var(--r-sm); display: inline-block; margin-top: 10px; }
+.hint { font-size: .84rem; color: var(--muted); }
+.radio { display: flex; gap: 10px; align-items: flex-start; padding: 12px; margin-top: 8px; border-radius: var(--r-md); border: 1px solid var(--line); cursor: pointer; }
+.radio:has(input:checked) { border-color: var(--a1); background: color-mix(in srgb, var(--a1) 8%, transparent); }
+.radio input { margin-top: 4px; accent-color: var(--a1); }
+.radio small { display: block; color: var(--muted); }
+.err { color: var(--bad); font-size: .88rem; margin-top: 10px; min-height: 1.2em; }
+.login { max-width: 420px; margin: 7vh auto 0; padding: 26px 22px 22px; }
+.login .logo { width: 64px; height: 64px; border-radius: 18px; display: block; margin: 0 auto 12px; box-shadow: 0 10px 30px var(--shadow); }
+.login h1 { text-align: center; margin: 0; font-size: 1.5rem; }
+.login p { text-align: center; color: var(--muted); margin: 4px 0 8px; font-size: .9rem; }
+.login .switch { margin-top: 16px; font-size: .9rem; }
+.login .gbtn { margin-top: 18px; }
+
+/* sheet + toast */
+.sheet-bg { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; padding: 10px;
+  background: rgba(5, 6, 12, .35); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: fade .15s; }
+.sheet { width: 100%; max-width: 520px; padding: 22px 18px max(18px, env(safe-area-inset-bottom)); animation: up .22s cubic-bezier(.2, .9, .3, 1.2); }
+.sheet .orb { width: 48px; height: 48px; border-radius: 15px; margin-bottom: 12px; }
+.sheet .orb svg { width: 26px; height: 26px; }
+.sheet h3 { margin: 0; font-size: 1.15rem; }
+.sheet p { margin: 6px 0 0; color: var(--muted); font-size: .92rem; white-space: pre-line; }
+.sheet input { margin-top: 14px; }
+.sheet .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.sheet .btns .gbtn { padding: 14px; }
+@keyframes up { from { transform: translateY(30px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
-@media (min-width: 600px) { .sheet-bg { align-items: center; } .sheet { border-radius: 18px; } }
-@media (prefers-reduced-motion: reduce) { .sheet, .sheet-bg { animation: none; } }
+@media (min-width: 640px) { .sheet-bg { align-items: center; } }
+.toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 40; padding: 12px 18px; border-radius: 99px;
+  display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .92rem; max-width: calc(100vw - 32px); animation: up .25s ease-out; }
+.toast svg { width: 18px; height: 18px; flex: none; }
+.toast.ok svg { color: var(--ok); } .toast.bad svg { color: var(--bad); }
+@media (max-width: 380px) { .themes { gap: 4px; } .sw { width: 21px; height: 21px; } .act { gap: 9px; padding: 10px; } .tile { width: 38px; height: 38px; } }
 </style>
 </head>
 <body>
-<main>
-  <h1>WakeKey <span class="conn" id="conn"></span></h1>
+<div class="bg" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
 
-  <section class="card" id="login" hidden>
-    <form id="loginForm">
-      <label for="host">Broker 位址</label>
-      <input type="text" id="host" autocomplete="off" autocapitalize="off" spellcheck="false"
-             placeholder="xxxxxxxx.ala.asia-southeast1.emqxsl.com" required>
-      <label for="user">帳號</label>
+<header class="top glass">
+  <button class="ib" id="back" hidden aria-label="返回"></button>
+  <a class="brand" href="#/" id="brand"><img src="icon.svg" alt=""><span id="title">WakeKey</span></a>
+  <span class="conn" id="conn" role="status"></span>
+  <span class="spacer"></span>
+  <div class="themes" id="themes" role="radiogroup" aria-label="主題"></div>
+  <button class="ib" id="mode"></button>
+</header>
+
+<main>
+  <section class="view" id="v-login" hidden>
+    <form class="login glass" id="loginForm">
+      <img class="logo" src="icon.svg" alt="">
+      <h1>WakeKey</h1>
+      <p>連上你的 MQTT broker</p>
+      <label class="f" for="host">Broker</label>
+      <input type="text" id="host" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="xxxxxxxx.ala.asia-southeast1.emqxsl.com" required>
+      <label class="f" for="user">帳號</label>
       <input type="text" id="user" autocomplete="username" autocapitalize="off" spellcheck="false" value="wk-admin" required>
-      <label for="pass">密碼</label>
+      <label class="f" for="pass">密碼</label>
       <input type="password" id="pass" autocomplete="current-password" required>
-      <label class="check"><input type="checkbox" id="remember" checked> 記住在這台裝置（只存在這個瀏覽器）</label>
-      <button class="primary wide" type="submit">連線</button>
-      <div class="result" id="loginMsg"></div>
+      <label class="switch">記住在這台裝置<input type="checkbox" id="remember" checked><i></i></label>
+      <button class="gbtn primary wide" type="submit">連線</button>
+      <div class="err" id="loginMsg"></div>
     </form>
   </section>
 
-  <div id="app" hidden>
-    <div id="devices"></div>
-    <section class="card" id="foundCard" hidden>
-      <h2>發現的裝置</h2>
-      <div class="hint" style="margin-top:0">這些板子已經連上雲端，但還不在你的清單裡。</div>
-      <div id="found"></div>
-    </section>
-    <section class="card" id="addCard" hidden></section>
-    <button class="wide" id="addBtn">＋ 新增裝置</button>
-  </div>
+  <section class="view" id="v-home" hidden>
+    <div id="found"></div>
+    <div class="grid" id="devices"></div>
+    <div class="home-foot">
+      <a class="gbtn" href="#/add" id="addLink"></a>
+      <a class="gbtn" href="#/account" id="acctLink"></a>
+    </div>
+  </section>
 
-  <footer id="foot" hidden>
-    <button id="logout">登出</button>
-    <button id="forget">登出並忘記密碼</button>
-  </footer>
+  <section class="view narrow" id="v-device" hidden></section>
+  <section class="view narrow" id="v-add" hidden></section>
+  <section class="view narrow" id="v-account" hidden></section>
 </main>
 
 <script>
 "use strict";
 const STORE = "wakekey.login.v1";
+const LOOK = "wakekey.look.v1";
 const REG_TOPIC = "wakekey/_admin/devices";   /* retained {v:1, devices:[{id,name}]}; devices cannot read it (ACL) */
 const MQTTS_PORT = 8883;                       /* what boards use; the page itself uses WSS 8084 */
 const CMD_TIMEOUT_MS = 20000;
 const ARM_MS = 4000;
+const HOLD_MS = 2000;
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,15}$/;
 const $ = (id) => document.getElementById(id);
 let client = null, login = null;
 let registry = null;                 /* null until the retained message (or its absence) is known */
-const live = new Map();              /* id -> {status, statusAt, events[]} */
+const live = new Map();              /* id -> {status, statusAt, events[], ui, journal, ...} */
 const pending = new Map();           /* rid -> {resolve, timer} */
 let adding = null;                   /* add-device wizard state */
 
-/* ---------- storage (per-viewer convenience only) ---------- */
+/* ---------- storage (per-viewer conveniences only) ---------- */
 function loadLogin() { try { return JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { return null; } }
 function saveLogin(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) {} }
 function clearLogin() { try { localStorage.removeItem(STORE); } catch (e) {} }
@@ -220,15 +415,20 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function rid() { return Math.random().toString(36).slice(2, 10); }
-function setConn(text, cls) { const c = $("conn"); c.textContent = text; c.className = "conn " + (cls || ""); }
 /* Phones turn a scanned host into "http://host/"; keep only the host name. */
 function normHost(h) { return String(h || "").trim().replace(/^[a-z]+:\/\//i, "").replace(/[/?#].*$/, "").replace(/:\d+$/, ""); }
 function ago(ts) {
   if (!ts) return "";
   const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
-  if (s < 60) return s + " 秒前";
+  if (s < 60) return "剛剛";
   if (s < 3600) return Math.round(s / 60) + " 分鐘前";
   return Math.round(s / 3600) + " 小時前";
+}
+function fmtDur(s) {
+  if (s < 60) return "不到 1 分鐘";
+  if (s < 3600) return Math.floor(s / 60) + " 分鐘";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h + " 小時" + (m ? " " + m + " 分" : "");
 }
 function randomPassword(n) {
   const a = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -245,48 +445,110 @@ async function copy(text, btn) {
     const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
     try { document.execCommand("copy"); } catch (e2) {} t.remove();
   }
-  if (btn) { const o = btn.textContent; btn.textContent = "已複製"; setTimeout(() => { btn.textContent = o; }, 1500); }
+  if (btn) { const o = btn.innerHTML; btn.innerHTML = ICON.check; setTimeout(() => { btn.innerHTML = o; }, 1400); }
 }
 function devName(id) { const d = registry && registry.find((x) => x.id === id); return d ? d.name : id; }
-function fmtDur(s) {
-  if (s < 60) return "不到 1 分鐘";
-  if (s < 3600) return Math.floor(s / 60) + " 分鐘";
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return h + " 小時" + (m ? " " + m + " 分" : "");
-}
 function vibrate() { try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {} }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* ---------- icons (inline, stroke style like the app icon) ---------- */
-const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+/* ---------- icons: 24px, rounded strokes with a soft duotone fill ---------- */
+const S = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const F = 'fill="currentColor" fill-opacity=".22"';
 const ICON = {
-  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
-  key: svg('<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2M16 7l3 3M18.5 4.5l2 2"/>'),
-  moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
-  restart: svg('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/>'),
-  home: svg('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'),
-  wifi: svg('<path d="M2 8.8a15 15 0 0 1 20 0M5 12.4a10 10 0 0 1 14 0M8.5 15.9a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".8"/>'),
-  monitor: svg('<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'),
-  alert: svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>'),
-  plug: svg('<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>'),
-  cloudOff: svg('<path d="m2 2 20 20M5.8 8.7A6 6 0 0 0 7 20h10c.8 0 1.5-.2 2.2-.6M21.6 16A4 4 0 0 0 18 10h-1.3a8 8 0 0 0-7.4-5.6"/>'),
+  sun: S(`<circle cx="12" cy="12" r="4.3" ${F}/><path d="M12 2.6v2.1M12 19.3v2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M2.6 12h2.1M19.3 12h2.1M5.4 18.6l1.5-1.5M17.1 6.9l1.5-1.5"/>`),
+  key: S(`<circle cx="8.2" cy="15.6" r="4.6" ${F}/><circle cx="8.2" cy="15.6" r="1.3"/><path d="M11.5 12.3 20.2 3.6M16.6 7.2l2.7 2.7M18.7 5.1l1.9 1.9"/>`),
+  moon: S(`<path d="M20.4 14.3A8.6 8.6 0 1 1 9.7 3.6a6.9 6.9 0 0 0 10.7 10.7z" ${F}/><path d="M16.6 3.4v3M15.1 4.9h3M20.1 8.4v1.9M19.15 9.35h1.9"/>`),
+  restart: S(`<circle cx="12" cy="12" r="8" ${F} stroke="none"/><path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20.2 3.8v4.6h-4.6"/><path d="M12 8.2v4.2"/>`),
+  home: S(`<path d="M3.6 10.4 12 3.7l8.4 6.7v8.7a1.6 1.6 0 0 1-1.6 1.6h-4v-5.6H9.2v5.6h-4a1.6 1.6 0 0 1-1.6-1.6z" ${F}/>`),
+  play: S(`<path d="M8 5.2v13.6L18.8 12z" ${F}/>`),
+  wifi: S(`<path d="M2.4 9.1a14 14 0 0 1 19.2 0M5.6 12.5a9.4 9.4 0 0 1 12.8 0M8.8 15.8a4.9 4.9 0 0 1 6.4 0"/><circle cx="12" cy="19.2" r="1.3" fill="currentColor" stroke="none"/>`),
+  awake: S(`<rect x="2.6" y="3.8" width="18.8" height="13.2" rx="2.6" ${F}/><path d="M8.6 20.6h6.8M12 17v3.6"/><path d="M8.6 10.6l2.3 2.3 4.6-4.6"/>`),
+  sleeping: S(`<rect x="2.6" y="3.8" width="18.8" height="13.2" rx="2.6" ${F}/><path d="M8.6 20.6h6.8M12 17v3.6"/><path d="M9.4 8h4.4l-4.4 5h4.4"/>`),
+  alert: S(`<path d="M10.3 3.9 1.9 18.1a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" ${F}/><path d="M12 9.2v4.2M12 17.3h.01"/>`),
+  plug: S(`<path d="M9 2.6v5M15 2.6v5"/><path d="M6.4 7.6h11.2v3.6a5.6 5.6 0 0 1-11.2 0z" ${F}/><path d="M12 16.8v4.6"/>`),
+  cloud: S(`<path d="M7.2 19A4.6 4.6 0 0 1 6.3 9.9a6.6 6.6 0 0 1 12.7.6 4.3 4.3 0 0 1-1.4 8.5z" ${F}/>`),
+  cloudOff: S(`<path d="M3 3l18 18"/><path d="M17.6 19H7.2A4.6 4.6 0 0 1 6.3 9.9a6.4 6.4 0 0 1 2.1-3.6M11.4 5.5A6.6 6.6 0 0 1 18 10.5a4.3 4.3 0 0 1 2.9 5.7"/>`),
+  gear: S(`<path d="M10.3 2.8h3.4l.5 2.6a7.4 7.4 0 0 1 1.9 1.1l2.5-.9 1.7 3-2 1.7a7.4 7.4 0 0 1 0 2.2l2 1.7-1.7 3-2.5-.9a7.4 7.4 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a7.4 7.4 0 0 1-1.9-1.1l-2.5.9-1.7-3 2-1.7a7.4 7.4 0 0 1 0-2.2l-2-1.7 1.7-3 2.5.9a7.4 7.4 0 0 1 1.9-1.1z" ${F}/><circle cx="12" cy="12" r="3"/>`),
+  chevL: S(`<path d="M14.8 5.2 8 12l6.8 6.8"/>`),
+  chevR: S(`<path d="M9.2 5.2 16 12l-6.8 6.8"/>`),
+  plus: S(`<path d="M12 5v14M5 12h14"/>`),
+  user: S(`<circle cx="12" cy="8.2" r="4" ${F}/><path d="M4.2 20.4a7.8 7.8 0 0 1 15.6 0"/>`),
+  clock: S(`<circle cx="12" cy="12" r="9" ${F}/><path d="M12 7.2V12l3.2 2"/>`),
+  info: S(`<circle cx="12" cy="12" r="9" ${F}/><path d="M12 11v5.4M12 7.7h.01"/>`),
+  shield: S(`<path d="M12 2.8 4.6 5.8v5.6c0 4.6 3 8.4 7.4 9.8 4.4-1.4 7.4-5.2 7.4-9.8V5.8z" ${F}/><path d="M9 12l2.1 2.1 4-4.1"/>`),
+  chip: S(`<rect x="6" y="6" width="12" height="12" rx="2.6" ${F}/><rect x="9.6" y="9.6" width="4.8" height="4.8" rx="1"/><path d="M9.5 2.6V6M14.5 2.6V6M9.5 18v3.4M14.5 18v3.4M2.6 9.5H6M2.6 14.5H6M18 9.5h3.4M18 14.5h3.4"/>`),
+  usb: S(`<path d="M12 3v13.2"/><path d="M9.6 5.4 12 3l2.4 2.4"/><path d="M12 13.4 7.6 11V8.6M12 15.4l4.4-2.4v-2.6"/><circle cx="12" cy="19" r="2.4" ${F}/><rect x="15.2" y="8" width="2.4" height="2.4" rx=".5"/><circle cx="7.6" cy="7.4" r="1.2"/>`),
+  button: S(`<circle cx="12" cy="12" r="8.6" ${F}/><circle cx="12" cy="12" r="4.2"/>`),
+  bulb: S(`<path d="M12 2.8a6.2 6.2 0 0 0-3.7 11.2c.6.5 1 1.2 1 2v.3h5.4V16c0-.8.4-1.5 1-2A6.2 6.2 0 0 0 12 2.8z" ${F}/><path d="M9.4 19h5.2M10.4 21.6h3.2"/>`),
+  pencil: S(`<path d="M4 20l1-4.6L15.6 4.8a2.2 2.2 0 0 1 3.1 3.1L8.1 18.5z" ${F}/><path d="M13.9 6.5l3.6 3.6"/>`),
+  trash: S(`<path d="M4 6.8h16M9.6 6.8V4.6h4.8v2.2"/><path d="M6 6.8l.9 12.6a1.6 1.6 0 0 0 1.6 1.5h7a1.6 1.6 0 0 0 1.6-1.5L18 6.8" ${F}/><path d="M10 11v6M14 11v6"/>`),
+  logout: S(`<path d="M14.6 3.8h3.8a1.6 1.6 0 0 1 1.6 1.6v13.2a1.6 1.6 0 0 1-1.6 1.6h-3.8"/><path d="M10 7.8 5.8 12l4.2 4.2M5.8 12h10"/>`),
+  check: S(`<path d="M5 12.6l4.4 4.4L19 7.4"/>`),
+  x: S(`<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>`),
+  auto: S(`<circle cx="12" cy="12" r="8.6"/><path d="M12 3.4a8.6 8.6 0 0 1 0 17.2z" fill="currentColor" stroke="none"/>`),
+  tag: S(`<path d="M3.6 12.5V4.6a1 1 0 0 1 1-1h7.9l8 8a1.4 1.4 0 0 1 0 2l-7.1 7.1a1.4 1.4 0 0 1-2 0z" ${F}/><circle cx="8" cy="8" r="1.4"/>`),
+  copy: S(`<rect x="8.2" y="8.2" width="12.2" height="12.2" rx="2.6" ${F}/><path d="M15.8 8.2V5.6a2 2 0 0 0-2-2H5.6a2 2 0 0 0-2 2v8.2a2 2 0 0 0 2 2h2.6"/>`),
+  refresh: S(`<path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20.2 3.8v4.6h-4.6"/>`),
+  sparkle: S(`<path d="M12 3.2l1.9 5.1 5.1 1.9-5.1 1.9-1.9 5.1-1.9-5.1L5 10.2l5.1-1.9z" ${F}/><path d="M18.6 15.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>`),
 };
-function actionIcon(a) {
-  if (a.op === "wake") return ICON.sun;
-  if (a.op === "rescue") return ICON.wifi;
-  return { unlock: ICON.key, standby: ICON.moon, restart: ICON.restart, home: ICON.home }[(a.args || {}).seq] || "";
+function signal(rssi) {
+  const n = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -75 ? 2 : 1;
+  return S([0, 1, 2, 3].map((i) => `<rect x="${3.5 + i * 4.8}" y="${17 - i * 3.6}" width="3" height="${3.6 + i * 3.6}" rx="1" ${i < n ? 'fill="currentColor" stroke="none"' : 'fill="currentColor" fill-opacity=".18" stroke="none"'}/>`).join(""));
+}
+/* each board action: icon + color family (tile on the big buttons, glyph tint on the round ones) */
+function actionLook(a) {
+  if (a.op === "wake") return ["sun", "sun"];
+  if (a.op === "rescue") return ["wifi", "amber"];
+  return ({ unlock: ["key", "key"], standby: ["moon", "moon"], restart: ["restart", "red"], home: ["home", "teal"] })[(a.args || {}).seq] || ["play", "key"];
+}
+/* "重新開機（長按）" -> ["重新開機", "長按"]; "執行「home」" -> ["home"] */
+function shortLabel(label) {
+  const m = String(label).match(/^(.+?)（(.+)）$/);
+  const main = (m ? m[1] : String(label)).replace(/^執行「(.+)」$/, "$1");
+  return [main, m ? m[2] : ""];
 }
 
-/* ---------- bottom sheet: replaces prompt() / confirm() ---------- */
+/* ---------- look: theme + light/dark (this browser only) ---------- */
+const THEMES = [["aurora", "極光", "#7b61ff", "#1fb6e8"], ["ocean", "海洋", "#1d6ff2", "#12c2b8"], ["sunset", "暮光", "#f2542d", "#e8367a"], ["graphite", "石墨", "#5b6475", "#a1a8b5"]];
+const MODES = { auto: ["auto", "外觀：跟隨系統"], light: ["sun", "外觀：淺色"], dark: ["moon", "外觀：深色"] };
+const mq = matchMedia("(prefers-color-scheme: dark)");
+let look = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(LOOK) || "{}");
+    return { theme: THEMES.some((t) => t[0] === v.theme) ? v.theme : "aurora", mode: MODES[v.mode] ? v.mode : "auto" };
+  } catch (e) { return { theme: "aurora", mode: "auto" }; }
+})();
+function applyLook() {
+  const h = document.documentElement, dark = look.mode === "dark" || (look.mode === "auto" && mq.matches);
+  h.dataset.theme = look.theme;
+  h.dataset.scheme = dark ? "dark" : "light";
+  document.querySelector("meta[name=theme-color]").content = dark ? "#05060b" : "#eef0f7";
+  $("themes").querySelectorAll(".sw").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.t === look.theme)));
+  const m = $("mode"), [ic, label] = MODES[look.mode];
+  m.innerHTML = ICON[ic]; m.title = label; m.setAttribute("aria-label", label);
+}
+function setLook(k, v) { look[k] = v; try { localStorage.setItem(LOOK, JSON.stringify(look)); } catch (e) {} applyLook(); }
+$("themes").innerHTML = THEMES.map(([t, name, c1, c2]) =>
+  `<button class="sw" role="radio" data-t="${t}" title="${name}" aria-label="主題：${name}" style="--s1:${c1};--s2:${c2}"></button>`).join("");
+$("themes").addEventListener("click", (e) => { const b = e.target.closest(".sw"); if (b) setLook("theme", b.dataset.t); });
+$("mode").onclick = () => setLook("mode", { auto: "light", light: "dark", dark: "auto" }[look.mode]);
+mq.addEventListener("change", () => { if (look.mode === "auto") applyLook(); });
+applyLook();
+$("back").innerHTML = ICON.chevL;
+$("addLink").innerHTML = ICON.plus + "新增裝置";
+$("acctLink").innerHTML = ICON.user + "帳號";
+
+/* ---------- sheet (replaces prompt / confirm) and toast ---------- */
 /* Resolves true (or the typed text when o.input is given), or null when cancelled. */
 function sheet(o) {
   return new Promise((resolve) => {
     const bg = document.createElement("div");
     bg.className = "sheet-bg";
-    bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><h3></h3><p></p>` +
+    const orb = o.icon ? `<div class="orb ${o.danger ? "warn" : ""}" style="${o.danger ? "" : "--og:linear-gradient(135deg,var(--a1),var(--a2))"}">${ICON[o.icon]}</div>` : "";
+    bg.innerHTML = `<div class="sheet glass" role="dialog" aria-modal="true">${orb}<h3></h3><p></p>` +
       (o.input !== undefined ? '<input type="text" class="in" autocomplete="off">' : "") +
-      `<div class="row"><button class="no">${esc(o.cancel || "取消")}</button>` +
-      `<button class="yes ${o.danger ? "danger" : "primary"}">${esc(o.ok || "確定")}</button></div></div>`;
+      `<div class="btns"><button class="gbtn no">${esc(o.cancel || "取消")}</button>` +
+      `<button class="gbtn yes ${o.danger ? "danger" : "primary"}">${esc(o.ok || "確定")}</button></div></div>`;
     bg.querySelector("h3").textContent = o.title || "";
     const p = bg.querySelector("p");
     if (o.text) p.textContent = o.text; else p.remove();
@@ -304,18 +566,34 @@ function sheet(o) {
     bg.querySelector(".yes").onclick = yes;
     document.addEventListener("keydown", key);
     document.body.appendChild(bg);
-    if (inp) { inp.focus(); inp.select(); }
+    if (inp) { inp.focus(); inp.select(); } else bg.querySelector(".yes").focus();
   });
+}
+let toastT = null;
+function toast(text, ok) {
+  document.querySelectorAll(".toast").forEach((t) => t.remove());
+  const t = document.createElement("div");
+  t.className = "toast glass " + (ok === false ? "bad" : "ok");
+  t.setAttribute("role", "status");
+  t.innerHTML = (ok === false ? ICON.x : ICON.check) + `<span>${esc(text)}</span>`;
+  document.body.appendChild(t);
+  clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 2600);
 }
 
 /* ---------- MQTT ---------- */
+function setConn(text, cls) {
+  const c = $("conn");
+  c.className = "conn " + (cls || "");
+  c.innerHTML = text ? `<b>${esc(text)}</b>` : "";
+  c.title = text || "";
+}
 /* keep: reconnecting the same login (phone back from the background), so the cards
    stay on screen and a failure keeps retrying instead of going back to the login form */
 function connect(l, fromSaved, keep) {
   if (client) { client.end(true); client = null; }
   login = Object.assign({}, l, { host: normHost(l.host) });
   if (!keep) registry = null;
-  setConn(keep ? "重新連線中…" : "連線中…", keep ? "warn" : "");
+  setConn(keep ? "重新連線中" : "連線中", "warn");
   client = mqtt.connect("wss://" + login.host + ":8084/mqtt", {
     username: login.user, password: login.pass,
     clientId: "wk-web-" + rid(), keepalive: 30, reconnectPeriod: 5000, connectTimeout: 15000, clean: true,
@@ -324,13 +602,12 @@ function connect(l, fromSaved, keep) {
   client.on("connect", () => {
     everConnected = true;
     setConn("已連線", "ok");
-    $("login").hidden = true; $("app").hidden = false; $("foot").hidden = false;
     client.subscribe([REG_TOPIC, "wakekey/+/status", "wakekey/+/event", "wakekey/+/resp", "wakekey/+/ui"], { qos: 1 });
     /* a retained registry arrives right after SUBACK; if none does, start with an empty list */
     setTimeout(() => { if (registry === null) { registry = []; renderAll(); } }, 2500);
-    renderAll();
+    showApp();
   });
-  client.on("reconnect", () => setConn("重新連線中…", "warn"));
+  client.on("reconnect", () => setConn("重新連線中", "warn"));
   client.on("offline", () => setConn("離線", "bad"));
   client.on("error", (err) => {
     const msg = /auth|password|Not authorized|Bad user/i.test(String(err && err.message)) ? "帳號或密碼錯誤" : "連線失敗：" + (err && err.message);
@@ -404,17 +681,15 @@ function saveRegistry(list) {
    board feature needs no change here. Boards from before that get legacyUi(), which rebuilds
    what this page used to hard-code from their status message. */
 const CONFIRMS = ["none", "twotap", "hold", "dialog"];
-const FIELD_TYPES = ["bool", "range", "select", "text", "secret", "color"];
 const INFO_CLS = ["ok", "warn", "bad", "muted"];
 /* Ops that press keys on the computer or take the board offline are never a single tap,
    whatever a board's description says. */
 const NEEDS_CONFIRM = ["unlock", "test_seq", "reboot", "unpair", "rescue", "set_usb_debug", "set_pin", "clear_pin"];
-const SEQ_HINT = "按鍵過程在「詳細資料與紀錄」裡，大約 10–40 秒完成。";
 
 function legacyUi(d) {
   const st = d.status || {}, seqs = d.seqs, has = (n) => !!(seqs && seqs.includes(n));
   const seqAction = (name, label, confirm, group, more) =>
-    Object.assign({ id: "seq:" + name, label, op: "unlock", args: { seq: name }, confirm, group, done_hint: SEQ_HINT }, more);
+    Object.assign({ id: "seq:" + name, label, op: "unlock", args: { seq: name }, confirm, group }, more);
   const actions = [{ id: "wake", label: "喚醒", op: "wake", confirm: "none", group: "main" }];
   if (!seqs || has("unlock")) actions.push(seqAction("unlock", "解鎖", "twotap", "main", { primary: true }));
   if (has("standby")) actions.push(seqAction("standby", "待機", "twotap", "more"));
@@ -423,15 +698,14 @@ function legacyUi(d) {
   const settings = [], cfg = {};
   if (Array.isArray(st.btn)) {
     actions.push({ id: "rescue", label: "開設定熱點", op: "rescue", confirm: "dialog", group: "detail", ask: "開啟設定熱點",
-      confirm_text: "板子會重開，熱點 WakeKey-Setup-XXXX 不用密碼，手機連上後開 http://192.168.4.1。\n熱點開著時板子離線（不連原本的 Wi-Fi），10 分鐘沒有裝置連上就會自動回去。" });
-    settings.push({ id: "btn", label: "BOOT 按鈕", hint: "每下間隔 0.4 秒內算連按，存了立刻生效。指定解鎖流程時，任何人走到電腦旁連按都能解開它。",
+      confirm_text: "板子會重開並開啟熱點，期間離線；10 分鐘沒有裝置連上會自動回去。" });
+    settings.push({ id: "btn", label: "BOOT 按鈕", hint: "每下間隔 0.4 秒內算連按。指定解鎖流程時，任何人走到電腦旁連按都能解開它。",
       fields: [1, 2, 3].map((n) => ({ key: "btn" + n, type: "select", label: "點 " + n + " 下", options: "btn_actions" })),
       save: (v) => ["set_buttons", { btn: [v.btn1, v.btn2, v.btn3] }] });
     st.btn.forEach((a, i) => { cfg["btn" + (i + 1)] = a; });
   }
   if (typeof st.led === "number") {
-    settings.push({ id: "led", label: "狀態燈", hint: "存了立刻生效。顏色在板子網頁的「設定 → 狀態燈」調整。",
-      fields: [{ key: "led", type: "range", min: 0, max: 10, zero: "關", label: "亮度" }],
+    settings.push({ id: "led", label: "狀態燈", fields: [{ key: "led", type: "range", min: 0, max: 10, zero: "關", label: "亮度" }],
       save: (v) => ["set_led", { lvl: v.led }] });
     cfg.led = st.led;
   }
@@ -485,7 +759,8 @@ function infoText(it, ui, view) {
   }
   return html + esc(it.suffix || "");
 }
-function infoRow(it, ui, view) {
+/* one detail row's value as HTML, or null when there is nothing to show */
+function infoValue(it, ui, view) {
   let html;
   if (Array.isArray(it.lines)) {
     const parts = it.lines.map((l) => { const t = infoText(l, ui, view); return t === null ? null : esc(l.prefix || "") + t; }).filter((x) => x !== null);
@@ -496,43 +771,39 @@ function infoRow(it, ui, view) {
     html = esc(it.fmt.replace(/\{([\w.]+)\}/g, (_, k) => getPath(view, k) ?? ""));
   }
   if (html === null || html === undefined) {
-    if (!it.empty) return "";
+    if (!it.empty) return null;
     html = `<span class="muted">${esc(it.empty)}</span>`;
   }
   if (it.pending) {
     const p = getPath(view, it.pending.key);
-    if (p !== undefined && p !== getPath(view, it.key)) html += `<span class="muted">${esc(it.pending.text)}</span>`;
+    if (p !== undefined && p !== getPath(view, it.key)) html += `<span class="warn">${esc(it.pending.text)}</span>`;
   }
-  return `<dt>${esc(it.label)}</dt><dd>${html}</dd>`;
+  return html;
 }
+const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb" };
+const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], usbdbg: ["usb", "t-gray"] };
 
-/* ---------- device cards ---------- */
-const cards = new Map();   /* id -> element */
-const results = new Map(); /* id -> {html, cls} kept across re-renders */
-/* The big line under the name: what the computer is doing, and what to do about it. */
+/* ---------- computer state ---------- */
 function stateOf(id, d, st) {
-  let cls = "off", ic = ICON.cloudOff, t, s = "", extra = "";
+  let cls = "off", ic = "cloudOff", t, s = "", extra = "";
   if (st.online !== true) {
-    if (adding && adding.id === id) t = "等待板子第一次上線…";
+    if (adding && adding.id === id) t = "等待第一次上線";
     else if (d.rescueAt && Date.now() - d.rescueAt < 11 * 60000) {
-      cls = "warn"; ic = ICON.wifi; t = "設定熱點開著";
-      s = `手機連「${esc(d.rescueAp || st.ap || "WakeKey-Setup")}」（不用密碼）。改完按「結束熱點」，或 10 分鐘沒人連會自動回到原本的網路`;
-    } else if (st.online === false) { t = "板子離線"; s = "斷電、沒網路，或正在重新開機"; }
-    else t = "還沒收到板子的狀態";
+      cls = "warn"; ic = "wifi"; t = "設定熱點開著";
+      s = esc(d.rescueAp || st.ap || "WakeKey-Setup");
+    } else if (st.online === false) { t = "板子離線"; s = "斷電或沒有網路"; }
+    else t = "讀取中…";
   } else if (st.usb === "suspended" && st.rwake === 0) {
-    cls = "warn"; ic = ICON.alert; t = "電腦睡眠中，這次叫不醒";
-    if (st.usbdbg) {
-      s = "電腦睡前沒有允許遠端喚醒：USB 除錯埠開著，Modern Standby 筆電要關掉";
-      extra = '<button data-act="usbdbg-off">關閉 USB 除錯埠</button>';
-    } else s = "電腦睡前沒有允許遠端喚醒（裝置管理員 → 這個鍵盤 → 允許此裝置喚醒電腦）";
+    cls = "warn"; ic = "alert"; t = "這次叫不醒";
+    s = st.usbdbg ? "USB 除錯埠開著，電腦不允許遠端喚醒" : "電腦不允許遠端喚醒";
+    if (st.usbdbg) extra = `<button class="gbtn" data-act="usbdbg-off">${ICON.usb}關閉除錯埠</button>`;
   } else if (st.usb === "suspended") {
-    cls = "sleep"; ic = ICON.moon; t = "電腦睡眠中";
-    if (typeof st.slept === "number") t += " · " + fmtDur(st.slept + Math.max(0, (Date.now() - d.statusAt) / 1000));
+    cls = "sleep"; ic = "sleeping"; t = "電腦睡眠中";
+    if (typeof st.slept === "number") s = fmtDur(st.slept + Math.max(0, (Date.now() - d.statusAt) / 1000));
   } else if (st.usb === "awake") {
-    cls = "awake"; ic = ICON.monitor; t = "電腦醒著";
-    if (st.busy) s = "正在執行按鍵流程…";
-  } else { ic = ICON.plug; t = "板子沒接到電腦"; s = "USB 沒有連接，或電腦關機了"; }
-  return { cls, html: `<div class="ic">${ic}</div><div><div class="t">${t}</div>` + (s ? `<div class="s">${s}</div>` : "") + extra + "</div>" };
+    cls = "awake"; ic = "awake"; t = st.busy ? "執行按鍵中…" : "電腦醒著";
+  } else { ic = "plug"; t = "沒接到電腦"; s = "USB 未連接或電腦關機"; }
+  return { cls, ic, t, s, extra };
 }
 
 /* ---------- journal timeline ---------- */
@@ -543,56 +814,90 @@ const TL_KINDS = [
   [/suspend|睡眠|待機/, "sleep"],
   [/已喚醒|已送出|恢復|完成|已連線|OK|允許|掛載|resume/, "ok"],
 ];
-function tlItem(line, today) {
+function today() { const n = new Date(); return String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0"); }
+function parseLine(line) {
   const m = String(line).match(/^(\d\d-\d\d) (\d\d:\d\d:\d\d)\s+(.*)$|^(\+\d+s)\s+(.*)$/);
-  const when = !m ? "" : m[1] ? (m[1] === today ? m[2] : m[1] + " " + m[2].slice(0, 5)) : m[4];
+  const when = !m ? "" : m[1] ? (m[1] === today() ? m[2].slice(0, 5) : m[1] + " " + m[2].slice(0, 5)) : m[4];
   const text = (!m ? String(line) : m[1] ? m[3] : m[5]).replace(/^-+\s*|\s*-+$/g, "");
   const k = (TL_KINDS.find((r) => r[0].test(text)) || [0, ""])[1];
-  return `<li data-k="${k}"><span class="k"></span><time>${esc(when)}</time><span>${esc(text)}</span></li>`;
+  return { when, text, k };
 }
-function timelineHtml(d) {
-  const lines = (d.journal || d.events).slice().reverse();
-  if (!lines.length) return "";
-  const n = new Date(), today = String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
-  return lines.slice(0, d.tlAll ? lines.length : 12).map((l) => tlItem(l, today)).join("");
+function timelineHtml(lines) {
+  return lines.slice().reverse().map((l) => { const e = parseLine(l); return `<li data-k="${e.k}"><span class="k"></span><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`; }).join("");
 }
+
+/* ======================= views ======================= */
+function route() {
+  const p = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  return { name: p[0] || "home", id: p[1] || null, tab: p[2] || "info" };
+}
+function showLogin(msg, prefill) {
+  ["v-home", "v-device", "v-add", "v-account"].forEach((v) => { $(v).hidden = true; });
+  $("v-login").hidden = false; $("back").hidden = true; $("title").textContent = "WakeKey";
+  const saved = prefill || loadLogin();
+  if (saved) {
+    $("host").value = saved.host || ""; $("user").value = saved.user || "wk-admin";
+    $("pass").value = saved.pass || "";      /* 登出 keeps the saved password: just press 連線 */
+  }
+  $("remember").checked = loadLogin() ? true : $("remember").checked;
+  $("loginMsg").textContent = msg || "";
+  setConn("");
+}
+function showApp() { $("v-login").hidden = true; renderView(true); }
+window.addEventListener("hashchange", () => { if (client) renderView(true); });
+
+function renderView(changed) {
+  const r = route(), views = { home: "v-home", d: "v-device", add: "v-add", account: "v-account" };
+  let name = views[r.name] ? r.name : "home";
+  if (name === "d" && registry && !registry.some((x) => x.id === r.id)) { location.hash = "#/"; return; }
+  Object.entries(views).forEach(([k, v]) => { $(v).hidden = k !== name; });
+  $("back").hidden = name === "home";
+  $("brand").querySelector("img").hidden = name !== "home";
+  $("title").textContent = name === "d" ? devName(r.id) : name === "add" ? "新增裝置" : name === "account" ? "帳號" : "WakeKey";
+  if (changed) window.scrollTo(0, 0);
+  if (name === "home") renderHome();
+  else if (name === "d") renderDevice(r.id, r.tab, changed);
+  else if (name === "add") { if (!adding) adding = { stage: 1 }; if (changed) renderAdd(); }
+  else if (name === "account") renderAccount();
+}
+function renderAll() { if (client && $("v-login").hidden) renderView(false); }
+$("back").onclick = () => { location.hash = "#/"; };
+
+/* ---------- home: device cards ---------- */
+const cards = new Map();   /* id -> element */
+const results = new Map(); /* id -> {html, cls} kept across re-renders */
 function cardFor(id) {
   if (cards.has(id)) return cards.get(id);
-  const el = document.createElement("section");
-  el.className = "card";
+  const el = document.createElement("article");
+  el.className = "dev glass";
+  const href = "#/d/" + encodeURIComponent(id);
   el.innerHTML = `
-    <div class="dev-head"><span class="dot"></span><div class="dev-name"></div><span class="pill"></span></div>
-    <div class="state"></div>
-    <div class="acts main"></div>
-    <div class="acts more" hidden></div>
-    <div class="result"></div>
-    <details><summary>詳細資料與紀錄</summary>
-      <dl class="facts"></dl>
-      <div class="row"><span class="tools"></span><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="remove">移除</button></div>
-      <div class="forms"></div>
-      <ul class="tl"></ul><div class="tl-empty"></div>
-      <button class="link" data-act="tl-all" hidden>顯示全部紀錄</button>
-    </details>`;
+    <div class="dev-h"><h2></h2><span class="badge"></span><a class="ib" href="${href}/info" aria-label="詳細資料與設定">${ICON.gear}</a></div>
+    <div class="hero"></div>
+    <div class="acts-main"></div>
+    <div class="acts-quick" hidden></div>
+    <div class="result" hidden></div>
+    <a class="recent" href="${href}/log" hidden></a>`;
   el.addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
     if (b.dataset.a) doAction(id, b.dataset.a, b);
-    else if (b.dataset.sec) toggleSection(id, b.dataset.sec);
-    else if (b.dataset.save) saveSection(id, b.dataset.save, b);
-    else if (b.dataset.cancel) toggleSection(id, b.dataset.cancel, false);
     else if (b.dataset.act) act(id, b.dataset.act, b);
   });
   cards.set(id, el);
   return el;
 }
-/* Long press (2 s, matches the CSS bar) before a destructive action; releasing early cancels. */
+/* Long press before a destructive action; releasing early cancels. The ring fills as you hold. */
 function holdButton(btn, fn) {
-  let t = null;
-  const stop = () => { clearTimeout(t); t = null; btn.classList.remove("hold"); };
+  let t = null, raf = 0, t0 = 0;
+  const ring = document.createElement("span"); ring.className = "ring";
+  (btn.querySelector(".ci") || btn).appendChild(ring);
+  const stop = () => { clearTimeout(t); cancelAnimationFrame(raf); t = null; btn.classList.remove("hold"); btn.style.removeProperty("--p"); };
+  const tick = () => { btn.style.setProperty("--p", Math.min(100, (Date.now() - t0) / HOLD_MS * 100)); raf = requestAnimationFrame(tick); };
   btn.addEventListener("pointerdown", (ev) => {
     if (btn.disabled) return;
-    ev.preventDefault(); btn.classList.add("hold");
-    t = setTimeout(() => { stop(); fn(); }, 2000);
+    ev.preventDefault(); btn.classList.add("hold"); t0 = Date.now(); tick();
+    t = setTimeout(() => { stop(); vibrate(); fn(); }, HOLD_MS);
   });
   ["pointerup", "pointerleave", "pointercancel"].forEach((e) => btn.addEventListener(e, stop));
   btn.addEventListener("contextmenu", (ev) => ev.preventDefault());
@@ -604,112 +909,103 @@ async function loadSeqs(id) {
   d.seqsLoading = true;
   const r = await send(id, "get_seq");
   d.seqsLoading = false;
-  if (r.ok && Array.isArray(r.seqs)) { d.seqs = r.seqs.map((s) => s.name).filter(Boolean); renderCard(id); }
+  if (r.ok && Array.isArray(r.seqs)) { d.seqs = r.seqs.map((s) => s.name).filter(Boolean); renderAll(); }
 }
 /* Rebuild the buttons only when the description changes, so an armed or held button survives re-renders. */
 function buildButtons(id, el, ui) {
-  const key = ui ? JSON.stringify([ui.actions, ui.settings]) : "";
+  const key = ui ? JSON.stringify(ui.actions) : "";
   if (el._uiKey === key) return;
   el._uiKey = key;
-  el._ui = ui;
-  const main = el.querySelector(".acts.main"), more = el.querySelector(".acts.more"), tools = el.querySelector(".tools");
-  main.innerHTML = ""; more.innerHTML = ""; tools.innerHTML = "";
-  el.querySelector(".forms").innerHTML = "";
-  if (!ui) { main.innerHTML = '<div class="muted">讀取功能清單…</div>'; more.hidden = true; return; }
-  (ui.actions || []).forEach((a) => {
-    const b = document.createElement("button"), ic = actionIcon(a);
-    const lm = a.label.match(/^(.+?)（(.+)）$/);     /* "重新開機（長按）": the note goes under the name */
-    b._html = (ic ? `<span class="i">${ic}</span>` : "") + (lm ? esc(lm[1]) + `<small>${esc(lm[2])}</small>` : esc(a.label));
+  const main = el.querySelector(".acts-main"), quick = el.querySelector(".acts-quick");
+  main.innerHTML = ""; quick.innerHTML = "";
+  if (!ui) { quick.hidden = true; return; }
+  (ui.actions || []).filter((a) => a.group === "main" || a.group === "more").forEach((a) => {
+    const [ic, fam] = actionLook(a), [name, note] = shortLabel(a.label), big = a.group === "main";
+    const b = document.createElement("button");
+    b.className = big ? "act" : "chip c-" + fam;
+    b._html = big ? `<span class="tile t-${fam}">${ICON[ic]}</span><span class="lbl">${esc(name)}</span>`
+      : `<span class="ci">${ICON[ic]}</span><span class="l">${esc(name)}${note ? `<small>${esc(note)}</small>` : ""}</span>`;
     b.innerHTML = b._html;
-    b.dataset.label = a.label;
-    if (a.primary) b.className = "primary";
+    b.setAttribute("aria-label", a.label);
     const c = confirmOf(a);
     if (!c) { b.dataset.unsupported = "1"; b.title = "需要更新控制頁"; }
     else if (c === "hold") holdButton(b, () => runConfirmed(id, a));
     else b.dataset.a = a.id;
     b._action = a;
-    (a.group === "main" ? main : a.group === "more" ? more : tools).appendChild(b);
+    (big ? main : quick).appendChild(b);
   });
-  more.hidden = !more.children.length;
-  (ui.settings || []).forEach((s) => {
-    const b = document.createElement("button");
-    b.textContent = s.label;
-    b.dataset.sec = s.id;
-    tools.appendChild(b);
-  });
+  quick.hidden = !quick.children.length;
 }
 function renderCard(id) {
   const el = cardFor(id), d = live.get(id) || { status: null, events: [] }, st = d.status || {};
   const online = st.online === true;
-  el.querySelector(".dot").className = "dot " + (online ? "on" : st.online === false ? "off" : "");
-  el.querySelector(".dev-name").textContent = devName(id);
-  const sv = stateOf(id, d, st), sEl = el.querySelector(".state");
-  sEl.className = "state " + sv.cls;
-  if (sEl._html !== sv.html) { sEl.innerHTML = sv.html; sEl._html = sv.html; }
-  const pill = el.querySelector(".pill");
-  pill.textContent = online ? (st.busy ? "執行中…" : "在線") : "離線";
-  pill.className = "pill " + (online ? (st.busy ? "warn" : "ok") : "bad");
+  el.querySelector("h2").textContent = devName(id);
+  const badge = el.querySelector(".badge");
+  badge.textContent = online ? (st.busy ? "執行中" : "在線") : "離線";
+  badge.className = "badge " + (online ? (st.busy ? "warn" : "ok") : "bad");
+  const sv = stateOf(id, d, st);
+  const hero = `<div class="orb ${sv.cls}">${ICON[sv.ic]}</div><div class="hero-t"><b>${sv.t}</b>${sv.s ? `<span>${sv.s}</span>` : ""}${sv.extra}</div>`;
+  const hEl = el.querySelector(".hero");
+  if (hEl._html !== hero) { hEl.innerHTML = hero; hEl._html = hero; }
   if (online && !d.ui && st.uirev === undefined && !d.seqs) loadSeqs(id);
-  const ui = uiOf(d);
-  buildButtons(id, el, ui);
-  el.querySelectorAll(".acts button, .tools button").forEach((b) => {
+  buildButtons(id, el, uiOf(d));
+  el.querySelectorAll(".act, .chip").forEach((b) => {
     if (b.classList.contains("arm")) return;
-    const detail = !!b.dataset.sec || (b._action && b._action.group !== "main" && b._action.group !== "more");
-    b.disabled = !online || !!b.dataset.unsupported || (!detail && !!st.busy);
+    b.disabled = !online || !!b.dataset.unsupported || !!st.busy;
   });
-  if (!online) el.querySelector(".forms").innerHTML = "";
-  const view = viewOf(d, ui);
-  el.querySelector(".facts").innerHTML = `
-    <dt>代號</dt><dd>${esc(id)}</dd>` + (online ? (ui ? (ui.info || []).map((it) => infoRow(it, ui, view)).join("") : "") + `
-    <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>` : "");
-  const tl = timelineHtml(d), tlEl = el.querySelector(".tl");
-  if (tlEl._html !== tl) { tlEl.innerHTML = tl; tlEl._html = tl; }
-  el.querySelector(".tl-empty").textContent = tl ? "" : "還沒有紀錄。按「完整紀錄」讀取板子保存的紀錄。";
-  el.querySelector("[data-act=tl-all]").hidden = !!d.tlAll || (d.journal || d.events).length <= 12;
   const r = results.get(id), rEl = el.querySelector(".result");
-  rEl.className = "result" + (r ? " show " + (r.cls || "") : "");
-  rEl.innerHTML = r ? r.html : "";
+  rEl.hidden = !r;
+  rEl.className = "result" + (r && r.cls ? " " + r.cls : "");
+  if (r && rEl._html !== r.html) { rEl.innerHTML = r.html; rEl._html = r.html; }
+  const lines = d.journal || d.events, last = lines[lines.length - 1], rec = el.querySelector(".recent");
+  rec.hidden = !last;
+  if (last) {
+    const e = parseLine(last);
+    const h = `<span class="k"></span><span class="x">${esc(e.text.replace(/（[^）]*：[^）]*）/g, ""))}</span><time>${esc(e.when)}</time>${ICON.chevR}`;
+    if (rec._html !== h) { rec.innerHTML = h; rec._html = h; rec.dataset.k = e.k; }
+  }
   return el;
 }
-function renderAll() {
+function renderHome() {
   const box = $("devices");
-  if (registry === null) { box.innerHTML = '<div class="card empty">讀取裝置清單…</div>'; return; }
+  if (registry === null) { box.innerHTML = `<div class="glass empty"><div class="orb off">${ICON.refresh}</div>讀取裝置清單…</div>`; return; }
   const ids = registry.map((x) => x.id);
   if (!ids.length) {
-    box.innerHTML = '<div class="card empty">還沒有裝置。按下方「＋ 新增裝置」加入第一台。</div>';
+    box.innerHTML = `<div class="glass empty"><div class="orb" style="--og:linear-gradient(135deg,var(--a1),var(--a2))">${ICON.sparkle}</div>還沒有裝置<div style="margin-top:16px"><a class="gbtn primary" href="#/add">${ICON.plus}新增裝置</a></div></div>`;
   } else {
-    const empty = box.querySelector(".empty"); if (empty) empty.remove();
+    box.querySelectorAll(".empty").forEach((e) => e.remove());
     ids.forEach((id) => box.appendChild(renderCard(id)));   /* appendChild keeps the list in registry order */
     [...cards.keys()].forEach((id) => { if (!ids.includes(id)) { cards.get(id).remove(); cards.delete(id); } });
   }
   const found = [...live.entries()].filter(([id, d]) => !ids.includes(id) && d.status && d.status.online === true);
-  $("foundCard").hidden = !found.length;
-  $("found").innerHTML = found.map(([id, d]) =>
-    `<div class="found"><span class="dot on"></span><span><b>${esc(id)}</b> <span class="muted">${esc(d.status.ssid || "")}</span></span><button class="primary" data-add="${esc(id)}">加入</button></div>`).join("");
+  $("found").innerHTML = found.length ? `<div class="found glass"><div class="group" style="padding:0;margin:0"><h3><span class="gi">${ICON.sparkle}</span>發現新裝置</h3>` +
+    found.map(([id, d]) => `<div class="row"><span class="ri">${ICON.chip}</span><span class="rl"><b>${esc(id)}</b> <span class="hint">${esc(d.status.ssid || "")}</span></span><button class="gbtn primary" data-add="${esc(id)}">${ICON.plus}加入</button></div>`).join("") +
+    "</div></div>" : "";
 }
 $("found").addEventListener("click", async (ev) => {
   const b = ev.target.closest("button[data-add]");
   if (!b) return;
   const id = b.dataset.add;
-  const name = await sheet({ title: "加入「" + id + "」", text: "幫這台取個名字，例如：公司筆電、家裡筆電。", input: id, ok: "加入" });
+  const name = await sheet({ icon: "sparkle", title: "加入「" + id + "」", text: "幫它取個名字", input: id, ok: "加入" });
   if (!name) return;
   saveRegistry(registry.concat([{ id, name }]));
 });
+
+/* ---------- actions ---------- */
 /* Two taps for anything that presses keys on the computer: first tap arms, second runs. */
-function armOrRun(btn, label, fn) {
-  const restore = () => { btn.classList.remove("arm"); btn.innerHTML = btn._html || esc(label); };
-  if (btn.classList.contains("arm")) {
-    clearTimeout(btn._t); restore(); fn();
-    return;
-  }
-  btn.classList.add("arm"); btn.textContent = "再按一次確認";
+function armOrRun(btn, fn) {
+  const restore = () => { btn.classList.remove("arm"); btn.innerHTML = btn._html; };
+  if (btn.classList.contains("arm")) { clearTimeout(btn._t); restore(); fn(); return; }
+  btn.classList.add("arm");
+  if (btn.classList.contains("act")) btn.querySelector(".lbl").textContent = "再按一次";
+  else btn.querySelector(".l").textContent = "再按一次";
   btn._t = setTimeout(restore, ARM_MS);
 }
 function doAction(id, aid, btn) {
   const a = btn._action;
   if (!a || a.id !== aid) return;
   const c = confirmOf(a);
-  if (c === "twotap") armOrRun(btn, btn.dataset.label, () => runAction(id, a));
+  if (c === "twotap") armOrRun(btn, () => runAction(id, a));
   else if (c === "dialog") runConfirmed(id, a);
   else if (c === "none") runAction(id, a);
 }
@@ -717,26 +1013,27 @@ function doAction(id, aid, btn) {
 async function runConfirmed(id, a) {
   if (a.confirm === "dialog" || a.confirm_text) {
     const danger = a.confirm === "hold" || ["reboot", "unpair"].includes(a.op);
-    if (!(await sheet({ title: (a.ask || a.label) + "「" + devName(id) + "」？", text: a.confirm_text, ok: a.ask || a.label, danger }))) return;
+    const [ic] = actionLook(a);
+    if (!(await sheet({ icon: ic, title: (a.ask || shortLabel(a.label)[0]) + "？", text: devName(id) + (a.confirm_text ? "\n" + a.confirm_text : ""), ok: a.ask || shortLabel(a.label)[0], danger }))) return;
   }
   runAction(id, a);
 }
-function stepsHtml(steps) {
-  return '<ul class="steps">' + steps.map((s) =>
-    `<li class="${s.s}"><span class="m"></span><span>${esc(s.t)}</span><span class="x">${esc(s.x || "")}</span></li>`).join("") + "</ul>";
+function stepperHtml(steps) {
+  return '<div class="stepper">' + steps.map((s, i) =>
+    (i ? `<b class="bar ${steps[i - 1].s === "ok" ? "ok" : ""}"></b>` : "") +
+    `<div class="st ${s.s}"><span class="m">${s.s === "ok" ? ICON.check : s.s === "bad" ? ICON.x : s.s === "warn" ? "!" : ""}</span><span>${esc(s.t)}</span><em>${esc(s.x || "")}</em></div>`).join("") + "</div>";
 }
 function rescueGuide(ap) {
-  return `<b>設定熱點大約 15 秒後出現</b><ol class="guide">
-    <li>手機 Wi-Fi 連「${esc(ap || "WakeKey-Setup-XXXX")}」，不用密碼。</li>
-    <li>連上後通常會自動跳出設定頁；沒有的話，點通知「登入網路」，或用瀏覽器開 <b>http://192.168.4.1</b>（Android 打不開時先關掉行動數據）。</li>
-    <li>輸入板子網頁的密碼，改好後按「結束熱點」。</li></ol>
-    <div class="hint">10 分鐘沒有裝置連上，板子會自動回到原本的網路。</div>`;
+  return `<div class="line">${ICON.wifi}<b>設定熱點約 15 秒後出現</b></div><ol class="guide">
+    <li>手機連「<b>${esc(ap || "WakeKey-Setup-XXXX")}</b>」（不用密碼）</li>
+    <li>自動跳出設定頁；沒有就開 <b>http://192.168.4.1</b></li>
+    <li>登入、改好後按「結束熱點」</li></ol>`;
 }
-/* Wake with a live progress: sent → the board woke the computer → the computer reports awake. */
+/* Wake with live progress: sent → the board woke the computer → the computer reports awake. */
 async function runWake(id) {
   const d = liveOf(id), t0 = Date.now();
-  const steps = [{ t: "送到板子", s: "run" }, { t: "板子送出喚醒", s: "wait" }, { t: "電腦醒來", s: "wait" }];
-  const show = (cls, foot) => { results.set(id, { html: stepsHtml(steps) + (foot || ""), cls: cls || "" }); renderCard(id); };
+  const steps = [{ t: "送出", s: "run" }, { t: "喚醒", s: "wait" }, { t: "電腦", s: "wait" }];
+  const show = (cls, foot) => { results.set(id, { html: stepperHtml(steps) + (foot || ""), cls: cls || "" }); renderAll(); };
   d.cancelWake = false;
   show();
   let r = await send(id, "wake");
@@ -748,11 +1045,10 @@ async function runWake(id) {
     steps[0].s = "ok"; steps[1].s = "warn";
     for (; wait > 0 && !d.cancelWake; wait--) {
       steps[1].x = wait + " 秒";
-      show("warn", '<div class="hint">電腦剛睡著，要等它完全進入睡眠才叫得醒；倒數完會自動再送。</div>' +
-        '<div class="row"><button data-act="cancel-wake">取消</button></div>');
+      show("warn", `<div class="msg">電腦剛睡著，倒數完自動再送</div><button class="gbtn" data-act="cancel-wake">${ICON.x}取消</button>`);
       await sleep(1000);
     }
-    if (d.cancelWake) { steps[1].s = "bad"; steps[1].x = "已取消"; show("bad"); return; }
+    if (d.cancelWake) { steps[1].s = "bad"; steps[1].x = "取消"; show("bad"); return; }
     steps[1].s = "run"; steps[1].x = ""; show();
     r = await send(id, "wake");
   }
@@ -763,9 +1059,9 @@ async function runWake(id) {
     return;
   }
   steps[0].s = steps[1].s = "ok";
-  steps[1].x = ((Date.now() - t0) / 1000).toFixed(1) + " 秒";
+  steps[1].x = ((Date.now() - t0) / 1000).toFixed(1) + "s";
   if (/原本醒著/.test(r.msg)) {
-    steps[2] = { t: "電腦本來就醒著，已按一下鍵", s: "ok" };
+    steps[2] = { t: "本來醒著", s: "ok" };
     show("ok"); vibrate();
     return;
   }
@@ -775,174 +1071,245 @@ async function runWake(id) {
   for (let ms = 0; ms < 30000 && !awake; ms += 250) {
     const st = liveOf(id).status || {};
     awake = st.usb === "awake" && liveOf(id).statusAt >= t0;
-    if (ms % 1000 === 0) { steps[2].x = Math.round(ms / 1000) + " 秒"; show(); }
+    if (ms % 1000 === 0) { steps[2].x = Math.round(ms / 1000) + "s"; show(); }
     if (!awake) await sleep(250);
   }
   if (awake) {
-    steps[2].s = "ok"; steps[2].x = ((Date.now() - sent) / 1000).toFixed(1) + " 秒";
+    steps[2].s = "ok"; steps[2].x = ((Date.now() - sent) / 1000).toFixed(1) + "s";
     show("ok"); vibrate();
   } else {
-    steps[2] = { t: "還沒收到電腦醒來的狀態", s: "warn" };
-    show("warn", '<div class="hint">板子已送出喚醒，但 30 秒內電腦沒有回報醒來。可以再按一次「喚醒」，或打開「詳細資料與紀錄」看紀錄。</div>');
+    steps[2] = { t: "電腦", s: "warn", x: "沒回報" };
+    show("warn", '<div class="msg">已送出喚醒，30 秒內電腦沒有回報醒來</div>');
   }
 }
 async function runAction(id, a) {
   if (a.op === "wake") return runWake(id);
-  results.set(id, { html: stepsHtml([{ t: "送到板子", s: "run" }]) }); renderCard(id);
+  const [name] = shortLabel(a.label);
+  results.set(id, { html: stepperHtml([{ t: name, s: "run" }]) }); renderAll();
   const r = await send(id, a.op, a.args);
   if (r.ok && a.op === "rescue") {
     const d = liveOf(id);
     d.rescueAt = Date.now(); d.rescueAp = r.ap || (d.status || {}).ap;
     results.set(id, { html: rescueGuide(d.rescueAp) });
+    if (route().name !== "home") location.hash = "#/";
+  } else if (r.ok) {
+    results.set(id, { html: `<div class="line ok">${ICON.check}<b>${esc(name)}</b></div><div class="msg">${esc(r.msg)}</div>`, cls: "ok" });
+    vibrate();
   } else {
-    results.set(id, {
-      html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && a.done_hint ? '<div class="hint">' + esc(a.done_hint) + "</div>" : ""),
-      cls: r.ok ? "ok" : "bad",
-    });
-    if (r.ok) vibrate();
+    results.set(id, { html: `<div class="line bad">${ICON.x}<b>${esc(name)}</b></div><div class="msg">${esc(r.msg)}</div>`, cls: "bad" });
   }
-  renderCard(id);
+  renderAll();
+  if (r.ok && a.op !== "rescue") setTimeout(() => { if (results.get(id) && results.get(id).cls === "ok") { results.delete(id); renderAll(); } }, 8000);
 }
 
-/* ---------- settings forms ---------- */
-function rangeText(f, v) { return v === 0 && f.zero ? f.zero : v + " / " + f.max; }
+/* ---------- device page: 概況 / 設定 / 紀錄 ---------- */
+const TABS = [["info", "概況", "info"], ["set", "設定", "gear"], ["log", "紀錄", "clock"]];
+let devPage = null;   /* {id, tab} currently built */
+function renderDevice(id, tab, changed) {
+  if (!TABS.some((t) => t[0] === tab)) tab = "info";
+  const box = $("v-device"), d = liveOf(id), st = d.status || {}, ui = uiOf(d);
+  const rebuild = changed || !devPage || devPage.id !== id || devPage.tab !== tab;
+  if (rebuild) {
+    devPage = { id, tab };
+    box.innerHTML = `<div class="page-h glass"></div>
+      <nav class="seg glass">${TABS.map(([t, n, ic]) => `<a href="#/d/${encodeURIComponent(id)}/${t}"${t === tab ? ' aria-current="page"' : ""}>${ICON[ic]}${n}</a>`).join("")}</nav>
+      <div id="pane"></div>`;
+    box.onclick = (ev) => {
+      const b = ev.target.closest("button");
+      if (!b) return;
+      if (b.dataset.save) saveSection(id, b.dataset.save, b);
+      else if (b.dataset.a) { const a = (uiOf(liveOf(id)) || {}).actions.find((x) => x.id === b.dataset.a); if (a) runConfirmed(id, a); }
+      else if (b.dataset.act) act(id, b.dataset.act, b);
+    };
+  }
+  const sv = stateOf(id, d, st);
+  const head = `<div class="orb ${sv.cls}">${ICON[sv.ic]}</div><div style="flex:1;min-width:0"><b>${sv.t}</b><span>${sv.s || (st.online ? esc(st.ssid || "") : "")}</span></div><span class="badge ${st.online ? "ok" : "bad"}">${st.online ? "在線" : "離線"}</span>`;
+  const hEl = box.querySelector(".page-h");
+  if (hEl._html !== head) { hEl.innerHTML = head; hEl._html = head; }
+  const pane = $("pane");
+  if (tab === "info") pane.innerHTML = infoPane(id, d, st, ui);
+  else if (tab === "log") {
+    if (rebuild && !d.journal && st.online) loadJournal(id);
+    const lines = d.journal || d.events;
+    const h = `<div class="group glass">` + (lines.length ? `<ul class="tl">${timelineHtml(lines)}</ul>` : `<div class="empty">還沒有紀錄</div>`) +
+      `<div class="save-row"><button class="gbtn" data-act="journal" ${st.online ? "" : "disabled"}>${ICON.refresh}重新讀取</button></div></div>`;
+    if (pane._html !== h) { pane.innerHTML = h; pane._html = h; }
+  } else if (tab === "set") {
+    /* rebuilt when the board's settings change, but never under an edit in progress */
+    const key = JSON.stringify([ui && ui.settings, ui && ui.cfg, !!st.online]);
+    if (rebuild || (pane._key !== key && !pane.querySelector(".dirty"))) {
+      pane.innerHTML = setPane(id, d, st, ui); pane._key = key;
+      if (!pane._wired) { wireSettings(id, pane); pane._wired = true; }
+    }
+  }
+}
+function infoPane(id, d, st, ui) {
+  if (!st.online) return `<div class="group glass"><div class="row"><span class="ri">${ICON.tag}</span><span class="rl">代號</span><span class="rv">${esc(id)}</span></div></div>`;
+  const view = viewOf(d, ui);
+  const rows = (ui ? ui.info || [] : []).filter((it) => it.label !== "Wi-Fi").map((it) => {
+    const v = infoValue(it, ui, view);
+    return v === null ? "" : `<div class="row"><span class="ri">${ICON[INFO_ICON[it.label] || "info"]}</span><span class="rl">${esc(it.label)}</span><span class="rv">${v}</span></div>`;
+  }).join("");
+  const wifi = st.ssid ? `<div class="row"><span class="ri">${signal(st.rssi)}</span><span class="rl">${esc(st.ssid)}</span><span class="rv">${esc(st.rssi)} dBm · ${esc(st.ip || "")}</span></div>` : "";
+  return `<div class="group glass">${rows}${wifi}</div>
+    <div class="group glass">
+      <div class="row"><span class="ri">${ICON.tag}</span><span class="rl">代號</span><span class="rv">${esc(id)}</span></div>
+      <div class="row"><span class="ri">${ICON.chip}</span><span class="rl">韌體</span><span class="rv">${esc(st.ver)}${st.ts ? " · " + ago(st.ts) : ""}</span></div>
+    </div>`;
+}
 function fieldHtml(ui, f, v) {
   const k = `data-k="${esc(f.key)}" data-t="${esc(f.type)}"`;
   switch (f.type) {
     case "bool":
-      return `<label class="check"><input type="checkbox" ${k}${v ? " checked" : ""}> ${esc(f.label)}</label>`;
+      return `<label class="switch">${esc(f.label)}<input type="checkbox" ${k}${v ? " checked" : ""}><i></i></label>`;
     case "range": {
       const n = typeof v === "number" ? v : (f.min || 0);
-      return `<label>${esc(f.label)}：<b class="lvl">${esc(rangeText(f, n))}</b></label>` +
+      return `<label class="f">${esc(f.label)}<span class="lvl">${esc(rangeText(f, n))}</span></label>` +
         `<input type="range" ${k} min="${+f.min || 0}" max="${+f.max || 0}" step="${+f.step || 1}" value="${n}">`;
     }
     case "select": {
       const list = optionList(ui, f), opts = list.some((o) => o[0] === v) || v === undefined ? list : list.concat([[v, v]]);
-      return `<label>${esc(f.label)}</label><select ${k}>` +
-        opts.map((o) => `<option value="${esc(o[0])}"${o[0] === v ? " selected" : ""}>${esc(o[1])}</option>`).join("") + "</select>";
+      return `<label class="sel"><span>${esc(f.label)}</span><select ${k}>` +
+        opts.map((o) => `<option value="${esc(o[0])}"${o[0] === v ? " selected" : ""}>${esc(o[1])}</option>`).join("") + "</select></label>";
     }
     case "text":
-      return `<label>${esc(f.label)}</label><input type="text" ${k} value="${esc(v)}"${f.max ? ' maxlength="' + (+f.max) + '"' : ""} autocomplete="off">`;
+      return `<label class="f">${esc(f.label)}</label><input type="text" ${k} value="${esc(v)}"${f.max ? ' maxlength="' + (+f.max) + '"' : ""} autocomplete="off">`;
     case "secret":
-      return `<label>${esc(f.label)}</label><input type="password" ${k} autocomplete="new-password" placeholder="留空＝不變更">`;
+      return `<label class="f">${esc(f.label)}</label><input type="password" ${k} autocomplete="new-password" placeholder="留空＝不變更">`;
     case "color":
-      return `<label class="color"><input type="color" ${k} value="${esc(/^#[0-9a-f]{6}$/i.test(v || "") ? v : "#000000")}"> ${esc(f.label)}</label>`;
+      return `<label class="color"><input type="color" ${k} value="${esc(/^#[0-9a-f]{6}$/i.test(v || "") ? v : "#000000")}">${esc(f.label)}</label>`;
   }
-  return `<p class="muted">「${esc(f.label)}」需要更新控制頁才能設定。</p>`;
+  return `<p class="hint">「${esc(f.label)}」需要更新控制頁才能設定。</p>`;
 }
-function toggleSection(id, sid, open) {
-  const el = cardFor(id), ui = uiOf(liveOf(id)) || el._ui, s = ui && (ui.settings || []).find((x) => x.id === sid);
-  const forms = el.querySelector(".forms"), cur = forms.dataset.sec;
-  forms.innerHTML = ""; delete forms.dataset.sec;
-  if (!s || open === false || cur === sid) return;
-  const cfg = viewOf(liveOf(id), ui).cfg;
-  forms.dataset.sec = sid;
-  forms.innerHTML = `<div class="secform"><h2>${esc(s.label)}</h2>` +
-    (s.fields || []).map((f) => fieldHtml(ui, f, cfg[f.key])).join("") +
-    (s.hint ? `<p class="muted">${esc(s.hint)}</p>` : "") +
-    `<div class="row"><button class="primary" data-save="${esc(sid)}">儲存</button><button data-cancel="${esc(sid)}">取消</button></div></div>`;
-  forms.querySelectorAll("input[type=range]").forEach((r) => {
-    const f = s.fields.find((x) => x.key === r.dataset.k);
-    r.addEventListener("input", () => { r.previousElementSibling.querySelector(".lvl").textContent = rangeText(f, +r.value); });
-  });
+function rangeText(f, v) { return v === 0 && f.zero ? f.zero : v + " / " + f.max; }
+function setPane(id, d, st, ui) {
+  if (!st.online) return `<div class="glass empty"><div class="orb off">${ICON.cloudOff}</div>板子上線後才能修改設定</div>` + devGroup(id, ui, false);
+  if (!ui) return `<div class="glass empty">讀取中…</div>`;
+  const cfg = viewOf(d, ui).cfg;
+  return (ui.settings || []).map((s) => {
+    const [ic, tg] = SECTION_LOOK[s.id] || ["gear", ""];
+    const fields = s.fields || [], colors = fields.filter((f) => f.type === "color"), rest = fields.filter((f) => f.type !== "color");
+    return `<section class="group glass" data-sec="${esc(s.id)}"><h3><span class="gi ${tg}">${ICON[ic]}</span>${esc(s.label)}` +
+      (s.hint ? `<button class="ib" data-act="hint" aria-label="說明" aria-expanded="false">${ICON.info}</button>` : "") + `</h3>
+      <div class="fields">` + (s.hint ? `<p class="hint" hidden>${esc(s.hint)}</p>` : "") + rest.map((f) => fieldHtml(ui, f, cfg[f.key])).join("") +
+      (colors.length ? `<div class="colors">${colors.map((f) => fieldHtml(ui, f, cfg[f.key])).join("")}</div>` : "") +
+      `</div><div class="save-row"><button class="gbtn primary" data-save="${esc(s.id)}" disabled>儲存</button></div></section>`;
+  }).join("") + devGroup(id, ui, true);
 }
-async function saveSection(id, sid, btn) {
-  const el = cardFor(id), ui = uiOf(liveOf(id)) || el._ui, s = ui && (ui.settings || []).find((x) => x.id === sid);
-  if (!s) return;
-  const cfg = viewOf(liveOf(id), ui).cfg, all = {}, changed = {};
-  el.querySelectorAll(".forms [data-k]").forEach((i) => {
+function devGroup(id, ui, online) {
+  const rescue = ui && (ui.actions || []).find((a) => a.op === "rescue");
+  return `<div class="group glass">
+    <button class="row" data-act="rename"><span class="ri">${ICON.pencil}</span><span class="rl">改名稱</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` +
+    (rescue && online ? `<button class="row" data-a="${esc(rescue.id)}"><span class="ri">${ICON.wifi}</span><span class="rl">開設定熱點</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` : "") +
+    `<button class="row danger" data-act="remove"><span class="ri">${ICON.trash}</span><span class="rl">從清單移除</span></button></div>`;
+}
+/* Save turns on once a section differs from what the board has. */
+function wireSettings(id, pane) {
+  const onInput = (e) => {
+    const sec = e.target.closest("[data-sec]");
+    if (!sec) return;
+    if (e.target.type === "range") {
+      const ui = uiOf(liveOf(id)), s = ui && ui.settings.find((x) => x.id === sec.dataset.sec), f = s && s.fields.find((x) => x.key === e.target.dataset.k);
+      if (f) e.target.previousElementSibling.querySelector(".lvl").textContent = rangeText(f, +e.target.value);
+    }
+    const changed = Object.keys(collect(id, sec).changed).length > 0;
+    sec.classList.toggle("dirty", changed);
+    sec.querySelector("[data-save]").disabled = !changed;
+  };
+  pane.addEventListener("input", onInput);
+  pane.addEventListener("change", onInput);
+}
+function collect(id, sec) {
+  const ui = uiOf(liveOf(id)), cfg = viewOf(liveOf(id), ui).cfg, all = {}, changed = {};
+  sec.querySelectorAll("[data-k]").forEach((i) => {
     const t = i.dataset.t, k = i.dataset.k;
     const v = t === "bool" ? i.checked : t === "range" ? +i.value : i.value;
     if (t === "secret" && !v) return;
     all[k] = v;
     if (t === "secret" || v !== cfg[k]) changed[k] = v;
   });
-  if (!Object.keys(changed).length) {
-    results.set(id, { html: "沒有變更", cls: "" });
-    toggleSection(id, sid, false); renderCard(id);
-    return;
-  }
-  if (s.confirm_text && !(await sheet({ title: s.label + "（" + devName(id) + "）", text: s.confirm_text, ok: "儲存" }))) return;
+  return { cfg, all, changed };
+}
+async function saveSection(id, sid, btn) {
+  const ui = uiOf(liveOf(id)), s = ui && (ui.settings || []).find((x) => x.id === sid), sec = btn.closest("[data-sec]");
+  if (!s || !sec) return;
+  const { cfg, all, changed } = collect(id, sec);
+  if (!Object.keys(changed).length) return;
+  if (s.confirm_text && !(await sheet({ icon: (SECTION_LOOK[s.id] || ["gear"])[0], title: s.label, text: s.confirm_text, ok: "儲存" }))) return;
   btn.disabled = true;
   const [op, extra] = s.save ? s.save(Object.assign({}, cfg, all)) : ["set", { section: sid, values: changed }];
   const r = await send(id, op, extra);
-  btn.disabled = false;
-  results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
-  if (r.ok) toggleSection(id, sid, false);
-  renderCard(id);
+  toast(r.msg || (r.ok ? "已儲存" : "沒有儲存"), r.ok);
+  if (r.ok) { sec.classList.remove("dirty"); setTimeout(() => { if (devPage && devPage.id === id && devPage.tab === "set") renderDevice(id, "set", true); }, 1500); }
+  else btn.disabled = false;
+}
+async function loadJournal(id) {
+  const r = await send(id, "journal");
+  if (r.ok) { liveOf(id).journal = (r.lines || []).concat(); renderAll(); }
+  else toast(r.msg, false);
 }
 
-/* ---------- card buttons the page itself owns ---------- */
+/* ---------- buttons the page itself owns ---------- */
 async function act(id, what, btn) {
   const d = liveOf(id);
-  if (what === "journal") {
-    btn.disabled = true;
-    const r = await send(id, "journal");
-    btn.disabled = false;
-    if (r.ok) { d.journal = (r.lines || []).concat(); d.tlAll = true; }
-    else results.set(id, { html: "✗ " + esc(r.msg), cls: "bad" });
-    renderCard(id);
+  if (what === "journal") { btn.disabled = true; await loadJournal(id); btn.disabled = false; return; }
+  if (what === "hint") {
+    const h = btn.closest("[data-sec]").querySelector(".hint"), open = h.hidden;
+    h.hidden = !open; btn.setAttribute("aria-expanded", String(open));
     return;
   }
-  if (what === "tl-all") { d.tlAll = true; renderCard(id); return; }
   if (what === "cancel-wake") { d.cancelWake = true; return; }
   if (what === "usbdbg-off") {
-    if (!(await sheet({ title: "關閉 USB 除錯埠（" + devName(id) + "）", ok: "關閉並重新開機",
-      text: "板子會重新開機（約 20 秒離線），之後只當純鍵盤，下次睡眠就叫得醒。\n睡著的電腦可能會被叫醒一下又回去睡。" }))) return;
+    if (!(await sheet({ icon: "usb", title: "關閉 USB 除錯埠？", ok: "關閉並重開",
+      text: devName(id) + " 會重新開機（約 20 秒離線），之後只當純鍵盤，下次睡眠就叫得醒。" }))) return;
     const r = d.ui ? await send(id, "set", { section: "usbdbg", values: { usbdbg: false } }) : await send(id, "set_usb_debug", { on: false });
-    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
-    renderCard(id);
+    toast(r.msg, r.ok);
     return;
   }
   if (what === "rename") {
-    const name = await sheet({ title: "改名稱", input: devName(id), ok: "儲存" });
+    const name = await sheet({ icon: "pencil", title: "改名稱", input: devName(id), ok: "儲存" });
     if (!name) return;
     saveRegistry(registry.map((x) => (x.id === id ? { id, name } : x)));
+    toast("已改名");
     return;
   }
   if (what === "remove") {
-    if (!(await sheet({ title: "把「" + devName(id) + "」從清單移除？", ok: "移除", danger: true,
-      text: "板子本身和它的雲端帳號不會被刪除；要徹底移除，請另外到 EMQX 刪掉帳號「" + id + "」。" }))) return;
+    if (!(await sheet({ icon: "trash", title: "移除「" + devName(id) + "」？", ok: "移除", danger: true,
+      text: "只從清單移除；板子和它的雲端帳號不受影響。要徹底移除，請到 EMQX 刪掉帳號「" + id + "」。" }))) return;
     results.delete(id);
     saveRegistry(registry.filter((x) => x.id !== id));
-    /* clear its retained messages so it does not show up again under 發現的裝置 until it reconnects */
+    /* clear its retained messages so it does not show up again under 發現新裝置 until it reconnects */
     client.publish("wakekey/" + id + "/status", "", { qos: 1, retain: true });
     client.publish("wakekey/" + id + "/ui", "", { qos: 1, retain: true });
     live.delete(id);
-    renderAll();
+    location.hash = "#/";
   }
 }
 
 /* ---------- add device ---------- */
-$("addBtn").onclick = () => { adding = { stage: 1 }; renderAdd(); };
-
 function renderAdd() {
-  const c = $("addCard");
-  if (!adding) { c.hidden = true; c.innerHTML = ""; $("addBtn").hidden = false; return; }
-  c.hidden = false; $("addBtn").hidden = true;
+  const c = $("v-add");
+  if (!adding) adding = { stage: 1 };
   if (adding.stage === 1) {
-    c.innerHTML = `
-      <h2>新增裝置</h2>
-      <label for="aName">名稱（顯示用）</label>
-      <input type="text" id="aName" placeholder="例如：家裡筆電">
-      <label for="aId">代號（英文小寫、數字、-，2–16 字；之後不能改）</label>
-      <input type="text" id="aId" autocapitalize="off" spellcheck="false" placeholder="例如：home">
-      <label class="radio"><input type="radio" name="aKind" value="new" checked><span><b>新的板子</b>：產生雲端帳號和配對碼</span></label>
-      <label class="radio"><input type="radio" name="aKind" value="old"><span><b>已經配對過的板子</b>：只加到清單（雲端帳號已經存在）</span></label>
-      <div class="result" id="aMsg"></div>
-      <div class="row"><button id="aCancel">取消</button><button class="primary" id="aNext">下一步</button></div>`;
-    $("aCancel").onclick = () => { adding = null; renderAdd(); };
-    $("aNext").onclick = () => {
+    c.innerHTML = `<form class="group glass" id="aForm" style="padding:6px 18px 18px">
+      <h3><span class="gi">${ICON.sparkle}</span>新增裝置</h3>
+      <label class="f" for="aName">名稱</label><input type="text" id="aName" placeholder="家裡筆電">
+      <label class="f" for="aId">代號（英文小寫、數字、-；之後不能改）</label><input type="text" id="aId" autocapitalize="off" spellcheck="false" placeholder="home">
+      <label class="radio"><input type="radio" name="aKind" value="new" checked><span><b>新的板子</b><small>產生雲端帳號和配對碼</small></span></label>
+      <label class="radio"><input type="radio" name="aKind" value="old"><span><b>已經配對過</b><small>只加到清單</small></span></label>
+      <div class="err" id="aMsg"></div>
+      <button class="gbtn primary wide" type="submit">下一步</button></form>`;
+    $("aForm").onsubmit = (ev) => {
+      ev.preventDefault();
       const name = $("aName").value.trim(), id = $("aId").value.trim().toLowerCase();
       const kind = c.querySelector("input[name=aKind]:checked").value;
-      const msg = $("aMsg");
-      const bad = (t) => { msg.className = "result show bad"; msg.textContent = t; };
+      const bad = (t) => { $("aMsg").textContent = t; };
       if (!name) return bad("請填名稱");
       if (!ID_RE.test(id)) return bad("代號只能用英文小寫、數字和 -，2–16 字，開頭不能是 -");
       if (id === "wk-admin") return bad("這個代號保留給控制網頁");
       if (registry.some((x) => x.id === id)) return bad("清單裡已經有這個代號");
       saveRegistry(registry.concat([{ id, name }]));
-      if (kind === "old") { adding = null; renderAdd(); return; }
+      if (kind === "old") { adding = null; location.hash = "#/"; return; }
       const pw = randomPassword(24);
       adding = { stage: 2, id, name, pw, code: pairingCode(login.host, id, pw) };
       renderAdd();
@@ -950,30 +1317,27 @@ function renderAdd() {
     return;
   }
   const a = adding, online = (live.get(a.id) || {}).status?.online === true;
-  c.innerHTML = `
-    <h2>新增「${esc(a.name)}」</h2>
-    <div class="hint" style="margin-top:0">這頁的密碼只顯示這一次。照順序做完再關掉。</div>
-    <div class="step"><b class="n">1</b><b>在 EMQX 建立這台的帳號</b>
-      <div class="hint">登入 <a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener">EMQX 控制台</a> → 你的部署 → 「存取控制」→「認證」→「使用者」→ 新增，填入：</div>
-      <div class="copy"><span class="muted">帳號</span><code>${esc(a.id)}</code><button data-copy="${esc(a.id)}">複製</button></div>
-      <div class="copy"><span class="muted">密碼</span><code>${esc(a.pw)}</code><button data-copy="${esc(a.pw)}">複製</button></div>
-      <div class="hint">權限不用另外設：每個帳號本來就只能用自己的 wakekey/代號/ 頻道。</div>
-    </div>
-    <div class="step"><b class="n">2</b><b>把配對碼存進板子</b>
-      <div class="hint">板子連上 Wi-Fi 後，用同一個網路打開板子的網頁 → 「設定」→「雲端（MQTT）」→ 貼上配對碼 → 儲存配對碼。</div>
-      <div class="copy"><code>${esc(a.code)}</code><button data-copy="${esc(a.code)}">複製</button></div>
-      <div class="qr" id="aQr"></div>
-    </div>
-    <div class="step"><b class="n">3</b><b>等板子上線</b>
-      <div class="hint">${online ? '<span class="ok">✓ 已上線，可以按「完成」</span>' : "板子儲存配對碼後約 20 秒會出現在上面的清單，狀態變成「在線」。"}</div>
-    </div>
-    <div class="row"><button class="primary" id="aDone">完成</button></div>`;
+  const cp = (v) => `<button class="ib" data-copy="${esc(v)}" aria-label="複製">${ICON.copy}</button>`;
+  c.innerHTML = `<div class="group glass" style="padding:6px 18px 18px">
+    <h3><span class="gi">${ICON.sparkle}</span>新增「${esc(a.name)}」</h3>
+    <p class="hint">密碼只顯示這一次，照順序做完再關掉。</p>
+    <div class="step"><span class="n">1</span><b>在 EMQX 建立帳號</b>
+      <p class="hint"><a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener" style="color:var(--a1)">EMQX 控制台</a> → 部署 → 存取控制 → 認證 → 使用者 → 新增</p>
+      <div class="copy"><span class="k">帳號</span><code>${esc(a.id)}</code>${cp(a.id)}</div>
+      <div class="copy"><span class="k">密碼</span><code>${esc(a.pw)}</code>${cp(a.pw)}</div></div>
+    <div class="step"><span class="n">2</span><b>把配對碼存進板子</b>
+      <p class="hint">板子網頁 → 設定 → 雲端（MQTT）→ 貼上</p>
+      <div class="copy"><code>${esc(a.code)}</code>${cp(a.code)}</div>
+      <div class="qr" id="aQr"></div></div>
+    <div class="step"><span class="n">3</span><b>等板子上線</b>
+      <div class="line ${online ? "ok" : ""}" style="margin-top:8px">${online ? ICON.check + "已上線" : '<span class="st run" style="min-width:0"><span class="m" style="width:18px;height:18px"></span></span>等待中…'}</div></div>
+    <button class="gbtn primary wide" id="aDone">完成</button></div>`;
   c.querySelectorAll("button[data-copy]").forEach((b) => { b.onclick = () => copy(b.dataset.copy, b); });
   try { new QRCode($("aQr"), { text: a.code, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L }); } catch (e) { $("aQr").remove(); }
   $("aDone").onclick = async () => {
-    if (!online && !(await sheet({ title: "板子還沒上線，確定關掉？", ok: "關掉", danger: true,
-      text: "現在關掉的話，這組密碼和配對碼就看不到了，要重來得先在 EMQX 刪掉帳號。" }))) return;
-    adding = null; renderAdd(); renderAll();
+    if (!online && !(await sheet({ icon: "alert", title: "板子還沒上線，確定關掉？", ok: "關掉", danger: true,
+      text: "關掉後就看不到這組密碼和配對碼，要重來得先到 EMQX 刪掉帳號。" }))) return;
+    adding = null; location.hash = "#/";
   };
 }
 /* refresh the wizard's "等板子上線" line when that device comes online */
@@ -983,37 +1347,41 @@ setInterval(() => {
   }
 }, 1000);
 
-/* ---------- login / logout ---------- */
-function showLogin(msg, prefill) {
-  $("login").hidden = false; $("app").hidden = true; $("foot").hidden = true;
-  const saved = prefill || loadLogin();
-  if (saved) {
-    $("host").value = saved.host || ""; $("user").value = saved.user || "wk-admin";
-    $("pass").value = saved.pass || "";      /* 登出 keeps the saved password: just press 連線 */
-  }
-  $("remember").checked = loadLogin() ? true : $("remember").checked;
-  const m = $("loginMsg");
-  m.className = "result" + (msg ? " show bad" : ""); m.textContent = msg || "";
-  setConn("");
+/* ---------- account ---------- */
+function renderAccount() {
+  const c = $("v-account"), n = registry ? registry.length : 0;
+  const h = `<div class="group glass">
+    <div class="row"><span class="ri">${ICON.user}</span><span class="rl">${esc(login ? login.user : "")}</span><span class="rv">${n} 台裝置</span></div>
+    <div class="row"><span class="ri">${ICON.cloud}</span><span class="rl">Broker</span><span class="rv">${esc(login ? login.host : "")}</span></div></div>
+    <div class="group glass">
+    <button class="row" id="logout"><span class="ri">${ICON.logout}</span><span class="rl">登出</span></button>
+    <button class="row danger" id="forget"><span class="ri">${ICON.trash}</span><span class="rl">登出並忘記密碼</span></button></div>`;
+  if (c._html === h) return;
+  c.innerHTML = h; c._html = h;
+  $("logout").onclick = () => { disconnect(); showLogin(); };
+  $("forget").onclick = () => { clearLogin(); disconnect(); showLogin(); $("pass").value = ""; };
 }
 
+/* ---------- login / logout ---------- */
 $("loginForm").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const l = { host: normHost($("host").value), user: $("user").value.trim(), pass: $("pass").value };
   $("host").value = l.host;
   if ($("remember").checked) saveLogin(l); else clearLogin();
   $("pass").value = "";
+  $("loginMsg").textContent = "";
   connect(l, false);
 });
 function disconnect() {
   if (client) client.end(true);
-  client = null; registry = null; adding = null;
+  client = null; registry = null; adding = null; devPage = null;
   live.clear(); cards.clear(); results.clear();
-  $("devices").innerHTML = ""; renderAdd();
+  $("devices").innerHTML = "";
+  $("v-account")._html = "";
+  location.hash = "#/";
 }
-$("logout").onclick = () => { disconnect(); showLogin(); };
-$("forget").onclick = () => { clearLogin(); disconnect(); $("pass").value = ""; showLogin(); $("pass").value = ""; };
-setInterval(() => { if (registry) registry.forEach((x) => renderCard(x.id)); }, 30000);
+/* durations (睡眠中 · 12 分鐘, 幾分鐘前) */
+setInterval(renderAll, 30000);
 
 /* Back from the background (phone app switch, screen on): the socket is often dead
    while the client still thinks it is connected, so reconnect at once instead of
@@ -1023,7 +1391,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
   if (!login || !client) return;
   if (!client.connected || Date.now() - hiddenAt > 15000) connect(login, true, true);
-  if (registry) registry.forEach((x) => renderCard(x.id));
+  renderAll();
 });
 
 /* Opens instantly and offline from the copy sw.js keeps (GitHub Pages is https). */
