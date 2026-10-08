@@ -19,13 +19,15 @@
 :root {
   --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #dde2e7;
   --accent: #1f6feb; --accent-text: #fff; --ok: #1a7f37; --warn: #b35900; --bad: #cf222e;
-  --chip: #eef1f4; --confirm: #b35900;
+  --chip: #eef1f4; --confirm: #b35900; --sleep: #5b5bd6;
+  --ok-bg: #e9f6ec; --sleep-bg: #eeeefc; --warn-bg: #fdf1e3;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0e1116; --card: #171b22; --text: #e6edf3; --muted: #8b96a2; --line: #2b323c;
     --accent: #2f81f7; --accent-text: #fff; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
-    --chip: #222832; --confirm: #d29922;
+    --chip: #222832; --confirm: #d29922; --sleep: #9a9cf8;
+    --ok-bg: #15281c; --sleep-bg: #1d1e36; --warn-bg: #2d2414;
   }
 }
 * { box-sizing: border-box; }
@@ -73,7 +75,6 @@ label.color { display: flex; align-items: center; gap: 10px; color: var(--text);
 label.color input { width: 44px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 .dev-head { display: flex; align-items: center; gap: 10px; }
 .dev-name { font-size: 1.2rem; font-weight: 700; }
-.dev-sub { color: var(--muted); font-size: .9rem; margin-top: 2px; }
 .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.on { background: var(--ok); } .dot.off { background: var(--bad); }
 .pill { margin-left: auto; font-size: .82rem; padding: 3px 10px; border-radius: 99px; background: var(--chip); color: var(--muted); white-space: nowrap; }
@@ -85,10 +86,6 @@ label.color input { width: 44px; height: 30px; padding: 0; border: 1px solid var
 .result.show { display: block; }
 details { margin-top: 12px; }
 summary { cursor: pointer; color: var(--muted); font-size: .92rem; }
-pre.log {
-  margin: 8px 0 0; padding: 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line);
-  font-size: .78rem; line-height: 1.45; white-space: pre-wrap; max-height: 260px; overflow: auto;
-}
 .hint { font-size: .86rem; color: var(--muted); margin-top: 8px; }
 .empty { text-align: center; color: var(--muted); padding: 22px 8px; }
 .found { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
@@ -103,6 +100,63 @@ pre.log {
 .radio input { margin-top: 5px; }
 footer { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 8px; }
 footer button { padding: 6px 10px; font-size: .8rem; }
+/* icons */
+.i { display: inline-flex; vertical-align: -5px; margin-right: 6px; }
+.i svg, .state .ic svg { width: 22px; height: 22px; }
+.acts.more .i svg { width: 18px; height: 18px; }
+.acts.more .i { vertical-align: -3px; }
+.acts button small { display: block; font-size: .75rem; font-weight: 500; opacity: .75; margin-top: 1px; }
+.acts.more button:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* computer state on each card */
+.state { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--chip); }
+.state .ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--card); color: var(--muted); }
+.state .t { font-weight: 700; }
+.state .s { font-size: .86rem; color: var(--muted); margin-top: 1px; }
+.state button { margin-top: 8px; padding: 7px 12px; font-size: .9rem; }
+.state.awake { background: var(--ok-bg); } .state.awake .ic { color: var(--ok); }
+.state.sleep { background: var(--sleep-bg); } .state.sleep .ic { color: var(--sleep); }
+.state.warn { background: var(--warn-bg); } .state.warn .ic { color: var(--warn); }
+/* wake progress */
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.steps .m { width: 18px; display: grid; place-items: center; flex: none; font-weight: 700; }
+.steps li.wait { color: var(--muted); }
+.steps li.wait .m::before { content: "•"; }
+.steps li.run .m::before { content: ""; width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+.steps li.ok .m::before { content: "✓"; color: var(--ok); }
+.steps li.bad .m::before { content: "✗"; color: var(--bad); }
+.steps li.warn .m::before { content: "!"; color: var(--warn); }
+.steps .x { margin-left: auto; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.result .msg { margin-top: 6px; }
+.result .row { margin-top: 8px; }
+.guide { margin: 6px 0 0; padding-left: 20px; } .guide li { margin: 4px 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* journal timeline */
+.tl { list-style: none; margin: 10px 0 0; padding: 0; max-height: 340px; overflow: auto; }
+.tl li { display: grid; grid-template-columns: 10px auto 1fr; gap: 9px; align-items: baseline; padding: 5px 0; border-top: 1px solid var(--line); font-size: .86rem; }
+.tl li:first-child { border-top: none; }
+.tl .k { width: 8px; height: 8px; border-radius: 50%; background: var(--line); align-self: center; }
+.tl [data-k=ok] .k { background: var(--ok); } .tl [data-k=bad] .k { background: var(--bad); }
+.tl [data-k=sleep] .k { background: var(--sleep); } .tl [data-k=warn] .k { background: var(--warn); }
+.tl [data-k=boot] .k { background: var(--accent); }
+.tl time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: .8rem; }
+.tl span { overflow-wrap: anywhere; }
+.tl [data-k=bad] span { color: var(--bad); }
+.tl [data-k=boot] span { font-weight: 600; }
+.tl-empty { color: var(--muted); font-size: .86rem; margin-top: 10px; }
+/* bottom sheet (replaces prompt / confirm) */
+.sheet-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; animation: fade .15s; }
+.sheet { background: var(--card); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 20px 16px max(20px, env(safe-area-inset-bottom)); animation: up .18s ease-out; }
+.sheet h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.sheet p { margin: 6px 0 0; color: var(--muted); font-size: .93rem; white-space: pre-line; }
+.sheet input { margin-top: 12px; }
+.sheet .row { margin-top: 16px; }
+.sheet .row button { padding: 13px; font-size: 1rem; }
+button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+@keyframes up { from { transform: translateY(40px); opacity: 0; } }
+@keyframes fade { from { opacity: 0; } }
+@media (min-width: 600px) { .sheet-bg { align-items: center; } .sheet { border-radius: 18px; } }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-bg { animation: none; } }
 </style>
 </head>
 <body>
@@ -194,13 +248,74 @@ async function copy(text, btn) {
   if (btn) { const o = btn.textContent; btn.textContent = "已複製"; setTimeout(() => { btn.textContent = o; }, 1500); }
 }
 function devName(id) { const d = registry && registry.find((x) => x.id === id); return d ? d.name : id; }
+function fmtDur(s) {
+  if (s < 60) return "不到 1 分鐘";
+  if (s < 3600) return Math.floor(s / 60) + " 分鐘";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h + " 小時" + (m ? " " + m + " 分" : "");
+}
+function vibrate() { try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {} }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------- icons (inline, stroke style like the app icon) ---------- */
+const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const ICON = {
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  key: svg('<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2M16 7l3 3M18.5 4.5l2 2"/>'),
+  moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  restart: svg('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/>'),
+  home: svg('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'),
+  wifi: svg('<path d="M2 8.8a15 15 0 0 1 20 0M5 12.4a10 10 0 0 1 14 0M8.5 15.9a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r=".8"/>'),
+  monitor: svg('<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+  alert: svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>'),
+  plug: svg('<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>'),
+  cloudOff: svg('<path d="m2 2 20 20M5.8 8.7A6 6 0 0 0 7 20h10c.8 0 1.5-.2 2.2-.6M21.6 16A4 4 0 0 0 18 10h-1.3a8 8 0 0 0-7.4-5.6"/>'),
+};
+function actionIcon(a) {
+  if (a.op === "wake") return ICON.sun;
+  if (a.op === "rescue") return ICON.wifi;
+  return { unlock: ICON.key, standby: ICON.moon, restart: ICON.restart, home: ICON.home }[(a.args || {}).seq] || "";
+}
+
+/* ---------- bottom sheet: replaces prompt() / confirm() ---------- */
+/* Resolves true (or the typed text when o.input is given), or null when cancelled. */
+function sheet(o) {
+  return new Promise((resolve) => {
+    const bg = document.createElement("div");
+    bg.className = "sheet-bg";
+    bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><h3></h3><p></p>` +
+      (o.input !== undefined ? '<input type="text" class="in" autocomplete="off">' : "") +
+      `<div class="row"><button class="no">${esc(o.cancel || "取消")}</button>` +
+      `<button class="yes ${o.danger ? "danger" : "primary"}">${esc(o.ok || "確定")}</button></div></div>`;
+    bg.querySelector("h3").textContent = o.title || "";
+    const p = bg.querySelector("p");
+    if (o.text) p.textContent = o.text; else p.remove();
+    const inp = bg.querySelector(".in");
+    if (inp) { inp.value = o.input; inp.placeholder = o.placeholder || ""; }
+    const done = (v) => { document.removeEventListener("keydown", key); bg.remove(); resolve(v); };
+    const yes = () => {
+      if (!inp) return done(true);
+      const v = inp.value.trim();
+      if (v) done(v); else inp.focus();
+    };
+    const key = (e) => { if (e.key === "Escape") done(null); else if (e.key === "Enter" && inp) yes(); };
+    bg.addEventListener("click", (e) => { if (e.target === bg) done(null); });
+    bg.querySelector(".no").onclick = () => done(null);
+    bg.querySelector(".yes").onclick = yes;
+    document.addEventListener("keydown", key);
+    document.body.appendChild(bg);
+    if (inp) { inp.focus(); inp.select(); }
+  });
+}
 
 /* ---------- MQTT ---------- */
-function connect(l, fromSaved) {
+/* keep: reconnecting the same login (phone back from the background), so the cards
+   stay on screen and a failure keeps retrying instead of going back to the login form */
+function connect(l, fromSaved, keep) {
   if (client) { client.end(true); client = null; }
   login = Object.assign({}, l, { host: normHost(l.host) });
-  registry = null;
-  setConn("連線中…");
+  if (!keep) registry = null;
+  setConn(keep ? "重新連線中…" : "連線中…", keep ? "warn" : "");
   client = mqtt.connect("wss://" + login.host + ":8084/mqtt", {
     username: login.user, password: login.pass,
     clientId: "wk-web-" + rid(), keepalive: 30, reconnectPeriod: 5000, connectTimeout: 15000, clean: true,
@@ -219,7 +334,7 @@ function connect(l, fromSaved) {
   client.on("offline", () => setConn("離線", "bad"));
   client.on("error", (err) => {
     const msg = /auth|password|Not authorized|Bad user/i.test(String(err && err.message)) ? "帳號或密碼錯誤" : "連線失敗：" + (err && err.message);
-    if (!everConnected) { client.end(true); client = null; showLogin(msg, fromSaved ? l : null); }
+    if (!everConnected && !keep) { client.end(true); client = null; showLogin(msg, fromSaved ? l : null); }
     setConn(msg, "bad");
   });
   client.on("message", onMessage);
@@ -252,9 +367,12 @@ function onMessage(topic, payload) {
     if (!text) { live.delete(id); renderAll(); return; }   /* retained status cleared (device removed) */
     try { d.status = JSON.parse(text); } catch (e) { return; }
     d.statusAt = Date.now();
+    /* back from the setup hotspot (the board still sends one status before it restarts) */
+    if (d.status.online === true && d.rescueAt && Date.now() - d.rescueAt > 15000) d.rescueAt = 0;
   } else {
     d.events.push(text);
     if (d.events.length > 40) d.events.shift();
+    if (d.journal) d.journal.push(text);
   }
   renderAll();
 }
@@ -391,18 +509,60 @@ function infoRow(it, ui, view) {
 /* ---------- device cards ---------- */
 const cards = new Map();   /* id -> element */
 const results = new Map(); /* id -> {html, cls} kept across re-renders */
-function pcLine(st) {
-  if (!st || st.online !== true) return "";
-  if (st.usb === "suspended") return '<span class="warn">電腦睡眠中</span>';
-  if (st.usb === "awake") return '<span class="ok">電腦醒著</span>';
-  return '<span class="bad">板子沒接到電腦</span>';
+/* The big line under the name: what the computer is doing, and what to do about it. */
+function stateOf(id, d, st) {
+  let cls = "off", ic = ICON.cloudOff, t, s = "", extra = "";
+  if (st.online !== true) {
+    if (adding && adding.id === id) t = "等待板子第一次上線…";
+    else if (d.rescueAt && Date.now() - d.rescueAt < 11 * 60000) {
+      cls = "warn"; ic = ICON.wifi; t = "設定熱點開著";
+      s = `手機連「${esc(d.rescueAp || st.ap || "WakeKey-Setup")}」（不用密碼）。改完按「結束熱點」，或 10 分鐘沒人連會自動回到原本的網路`;
+    } else if (st.online === false) { t = "板子離線"; s = "斷電、沒網路，或正在重新開機"; }
+    else t = "還沒收到板子的狀態";
+  } else if (st.usb === "suspended" && st.rwake === 0) {
+    cls = "warn"; ic = ICON.alert; t = "電腦睡眠中，這次叫不醒";
+    if (st.usbdbg) {
+      s = "電腦睡前沒有允許遠端喚醒：USB 除錯埠開著，Modern Standby 筆電要關掉";
+      extra = '<button data-act="usbdbg-off">關閉 USB 除錯埠</button>';
+    } else s = "電腦睡前沒有允許遠端喚醒（裝置管理員 → 這個鍵盤 → 允許此裝置喚醒電腦）";
+  } else if (st.usb === "suspended") {
+    cls = "sleep"; ic = ICON.moon; t = "電腦睡眠中";
+    if (typeof st.slept === "number") t += " · " + fmtDur(st.slept + Math.max(0, (Date.now() - d.statusAt) / 1000));
+  } else if (st.usb === "awake") {
+    cls = "awake"; ic = ICON.monitor; t = "電腦醒著";
+    if (st.busy) s = "正在執行按鍵流程…";
+  } else { ic = ICON.plug; t = "板子沒接到電腦"; s = "USB 沒有連接，或電腦關機了"; }
+  return { cls, html: `<div class="ic">${ic}</div><div><div class="t">${t}</div>` + (s ? `<div class="s">${s}</div>` : "") + extra + "</div>" };
+}
+
+/* ---------- journal timeline ---------- */
+const TL_KINDS = [
+  [/失敗|被拒|錯誤|沒有恢復|不允許|未允許|認證|鎖定/, "bad"],
+  [/忽略|熱點/, "warn"],
+  [/WakeKey 開機/, "boot"],
+  [/suspend|睡眠|待機/, "sleep"],
+  [/已喚醒|已送出|恢復|完成|已連線|OK|允許|掛載|resume/, "ok"],
+];
+function tlItem(line, today) {
+  const m = String(line).match(/^(\d\d-\d\d) (\d\d:\d\d:\d\d)\s+(.*)$|^(\+\d+s)\s+(.*)$/);
+  const when = !m ? "" : m[1] ? (m[1] === today ? m[2] : m[1] + " " + m[2].slice(0, 5)) : m[4];
+  const text = (!m ? String(line) : m[1] ? m[3] : m[5]).replace(/^-+\s*|\s*-+$/g, "");
+  const k = (TL_KINDS.find((r) => r[0].test(text)) || [0, ""])[1];
+  return `<li data-k="${k}"><span class="k"></span><time>${esc(when)}</time><span>${esc(text)}</span></li>`;
+}
+function timelineHtml(d) {
+  const lines = (d.journal || d.events).slice().reverse();
+  if (!lines.length) return "";
+  const n = new Date(), today = String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+  return lines.slice(0, d.tlAll ? lines.length : 12).map((l) => tlItem(l, today)).join("");
 }
 function cardFor(id) {
   if (cards.has(id)) return cards.get(id);
   const el = document.createElement("section");
   el.className = "card";
   el.innerHTML = `
-    <div class="dev-head"><span class="dot"></span><div><div class="dev-name"></div><div class="dev-sub"></div></div><span class="pill"></span></div>
+    <div class="dev-head"><span class="dot"></span><div class="dev-name"></div><span class="pill"></span></div>
+    <div class="state"></div>
     <div class="acts main"></div>
     <div class="acts more" hidden></div>
     <div class="result"></div>
@@ -410,7 +570,8 @@ function cardFor(id) {
       <dl class="facts"></dl>
       <div class="row"><span class="tools"></span><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="remove">移除</button></div>
       <div class="forms"></div>
-      <pre class="log"></pre>
+      <ul class="tl"></ul><div class="tl-empty"></div>
+      <button class="link" data-act="tl-all" hidden>顯示全部紀錄</button>
     </details>`;
   el.addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
@@ -456,8 +617,10 @@ function buildButtons(id, el, ui) {
   el.querySelector(".forms").innerHTML = "";
   if (!ui) { main.innerHTML = '<div class="muted">讀取功能清單…</div>'; more.hidden = true; return; }
   (ui.actions || []).forEach((a) => {
-    const b = document.createElement("button");
-    b.textContent = a.label;
+    const b = document.createElement("button"), ic = actionIcon(a);
+    const lm = a.label.match(/^(.+?)（(.+)）$/);     /* "重新開機（長按）": the note goes under the name */
+    b._html = (ic ? `<span class="i">${ic}</span>` : "") + (lm ? esc(lm[1]) + `<small>${esc(lm[2])}</small>` : esc(a.label));
+    b.innerHTML = b._html;
     b.dataset.label = a.label;
     if (a.primary) b.className = "primary";
     const c = confirmOf(a);
@@ -480,8 +643,9 @@ function renderCard(id) {
   const online = st.online === true;
   el.querySelector(".dot").className = "dot " + (online ? "on" : st.online === false ? "off" : "");
   el.querySelector(".dev-name").textContent = devName(id);
-  const waiting = adding && adding.id === id && !online;
-  el.querySelector(".dev-sub").innerHTML = online ? pcLine(st) : waiting ? "等待板子第一次上線…" : st.online === false ? "板子離線（斷電或沒網路）" : "還沒收到板子的狀態";
+  const sv = stateOf(id, d, st), sEl = el.querySelector(".state");
+  sEl.className = "state " + sv.cls;
+  if (sEl._html !== sv.html) { sEl.innerHTML = sv.html; sEl._html = sv.html; }
   const pill = el.querySelector(".pill");
   pill.textContent = online ? (st.busy ? "執行中…" : "在線") : "離線";
   pill.className = "pill " + (online ? (st.busy ? "warn" : "ok") : "bad");
@@ -498,7 +662,10 @@ function renderCard(id) {
   el.querySelector(".facts").innerHTML = `
     <dt>代號</dt><dd>${esc(id)}</dd>` + (online ? (ui ? (ui.info || []).map((it) => infoRow(it, ui, view)).join("") : "") + `
     <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>` : "");
-  el.querySelector("pre.log").textContent = d.events.slice().reverse().join("\n") || "（還沒有事件）";
+  const tl = timelineHtml(d), tlEl = el.querySelector(".tl");
+  if (tlEl._html !== tl) { tlEl.innerHTML = tl; tlEl._html = tl; }
+  el.querySelector(".tl-empty").textContent = tl ? "" : "還沒有紀錄。按「完整紀錄」讀取板子保存的紀錄。";
+  el.querySelector("[data-act=tl-all]").hidden = !!d.tlAll || (d.journal || d.events).length <= 12;
   const r = results.get(id), rEl = el.querySelector(".result");
   rEl.className = "result" + (r ? " show " + (r.cls || "") : "");
   rEl.innerHTML = r ? r.html : "";
@@ -520,24 +687,24 @@ function renderAll() {
   $("found").innerHTML = found.map(([id, d]) =>
     `<div class="found"><span class="dot on"></span><span><b>${esc(id)}</b> <span class="muted">${esc(d.status.ssid || "")}</span></span><button class="primary" data-add="${esc(id)}">加入</button></div>`).join("");
 }
-$("found").addEventListener("click", (ev) => {
+$("found").addEventListener("click", async (ev) => {
   const b = ev.target.closest("button[data-add]");
   if (!b) return;
   const id = b.dataset.add;
-  const name = prompt("幫這台取個名字（例如：公司筆電、家裡筆電）", id);
-  if (name === null) return;
-  saveRegistry(registry.concat([{ id, name: name.trim() || id }]));
+  const name = await sheet({ title: "加入「" + id + "」", text: "幫這台取個名字，例如：公司筆電、家裡筆電。", input: id, ok: "加入" });
+  if (!name) return;
+  saveRegistry(registry.concat([{ id, name }]));
 });
 /* Two taps for anything that presses keys on the computer: first tap arms, second runs. */
 function armOrRun(btn, label, fn) {
+  const restore = () => { btn.classList.remove("arm"); btn.innerHTML = btn._html || esc(label); };
   if (btn.classList.contains("arm")) {
-    clearTimeout(btn._t); btn.classList.remove("arm"); btn.textContent = label; fn();
+    clearTimeout(btn._t); restore(); fn();
     return;
   }
   btn.classList.add("arm"); btn.textContent = "再按一次確認";
-  btn._t = setTimeout(() => { btn.classList.remove("arm"); btn.textContent = label; }, ARM_MS);
+  btn._t = setTimeout(restore, ARM_MS);
 }
-function askText(id, what, text) { return (what) + "「" + devName(id) + "」？" + (text ? "\n" + text : ""); }
 function doAction(id, aid, btn) {
   const a = btn._action;
   if (!a || a.id !== aid) return;
@@ -547,27 +714,93 @@ function doAction(id, aid, btn) {
   else if (c === "none") runAction(id, a);
 }
 /* hold and dialog: ask first when the board gave a reason (hold), always for dialog */
-function runConfirmed(id, a) {
-  if ((a.confirm === "dialog" || a.confirm_text) && !confirm(askText(id, a.ask || a.label, a.confirm_text))) return;
+async function runConfirmed(id, a) {
+  if (a.confirm === "dialog" || a.confirm_text) {
+    const danger = a.confirm === "hold" || ["reboot", "unpair"].includes(a.op);
+    if (!(await sheet({ title: (a.ask || a.label) + "「" + devName(id) + "」？", text: a.confirm_text, ok: a.ask || a.label, danger }))) return;
+  }
   runAction(id, a);
 }
-async function runAction(id, a, attempt) {
-  attempt = attempt || 0;
-  results.set(id, { html: "送出中…" }); renderCard(id);
-  const r = await send(id, a.op, a.args);
-  let wait = r.retry_after, max = r.retry_max || 3;
-  /* boards without a description: the wake refusal right after the computer went to sleep */
-  if (wait === undefined && a.op === "wake" && /剛進入睡眠/.test(r.msg || "")) wait = 10;
-  if (!r.ok && wait > 0 && attempt < max) {
-    results.set(id, { html: esc(r.msg) + "<br>" + wait + " 秒後自動再試（第 " + (attempt + 1) + "／" + max + " 次）…", cls: "warn" });
-    renderCard(id);
-    setTimeout(() => runAction(id, a, attempt + 1), wait * 1000);
+function stepsHtml(steps) {
+  return '<ul class="steps">' + steps.map((s) =>
+    `<li class="${s.s}"><span class="m"></span><span>${esc(s.t)}</span><span class="x">${esc(s.x || "")}</span></li>`).join("") + "</ul>";
+}
+function rescueGuide(ap) {
+  return `<b>設定熱點大約 15 秒後出現</b><ol class="guide">
+    <li>手機 Wi-Fi 連「${esc(ap || "WakeKey-Setup-XXXX")}」，不用密碼。</li>
+    <li>連上後通常會自動跳出設定頁；沒有的話，點通知「登入網路」，或用瀏覽器開 <b>http://192.168.4.1</b>（Android 打不開時先關掉行動數據）。</li>
+    <li>輸入板子網頁的密碼，改好後按「結束熱點」。</li></ol>
+    <div class="hint">10 分鐘沒有裝置連上，板子會自動回到原本的網路。</div>`;
+}
+/* Wake with a live progress: sent → the board woke the computer → the computer reports awake. */
+async function runWake(id) {
+  const d = liveOf(id), t0 = Date.now();
+  const steps = [{ t: "送到板子", s: "run" }, { t: "板子送出喚醒", s: "wait" }, { t: "電腦醒來", s: "wait" }];
+  const show = (cls, foot) => { results.set(id, { html: stepsHtml(steps) + (foot || ""), cls: cls || "" }); renderCard(id); };
+  d.cancelWake = false;
+  show();
+  let r = await send(id, "wake");
+  /* refused because the computer has only just gone to sleep: count down, then send again */
+  for (let tries = 0; !r.ok && tries < (r.retry_max || 2); tries++) {
+    let wait = r.retry_after;
+    if (wait === undefined && /剛進入睡眠/.test(r.msg || "")) wait = 10;   /* boards from before retry_after */
+    if (!(wait > 0)) break;
+    steps[0].s = "ok"; steps[1].s = "warn";
+    for (; wait > 0 && !d.cancelWake; wait--) {
+      steps[1].x = wait + " 秒";
+      show("warn", '<div class="hint">電腦剛睡著，要等它完全進入睡眠才叫得醒；倒數完會自動再送。</div>' +
+        '<div class="row"><button data-act="cancel-wake">取消</button></div>');
+      await sleep(1000);
+    }
+    if (d.cancelWake) { steps[1].s = "bad"; steps[1].x = "已取消"; show("bad"); return; }
+    steps[1].s = "run"; steps[1].x = ""; show();
+    r = await send(id, "wake");
+  }
+  if (!r.ok) {
+    if (/沒有回應|還沒連上/.test(r.msg || "")) steps[0].s = "bad";
+    else { steps[0].s = "ok"; steps[1].s = "bad"; }
+    show("bad", `<div class="msg">${esc(r.msg)}</div>`);
     return;
   }
-  results.set(id, {
-    html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && a.done_hint ? '<div class="hint">' + esc(a.done_hint) + "</div>" : ""),
-    cls: r.ok ? "ok" : "bad",
-  });
+  steps[0].s = steps[1].s = "ok";
+  steps[1].x = ((Date.now() - t0) / 1000).toFixed(1) + " 秒";
+  if (/原本醒著/.test(r.msg)) {
+    steps[2] = { t: "電腦本來就醒著，已按一下鍵", s: "ok" };
+    show("ok"); vibrate();
+    return;
+  }
+  steps[2].s = "run"; show();
+  const sent = Date.now();
+  let awake = false;
+  for (let ms = 0; ms < 30000 && !awake; ms += 250) {
+    const st = liveOf(id).status || {};
+    awake = st.usb === "awake" && liveOf(id).statusAt >= t0;
+    if (ms % 1000 === 0) { steps[2].x = Math.round(ms / 1000) + " 秒"; show(); }
+    if (!awake) await sleep(250);
+  }
+  if (awake) {
+    steps[2].s = "ok"; steps[2].x = ((Date.now() - sent) / 1000).toFixed(1) + " 秒";
+    show("ok"); vibrate();
+  } else {
+    steps[2] = { t: "還沒收到電腦醒來的狀態", s: "warn" };
+    show("warn", '<div class="hint">板子已送出喚醒，但 30 秒內電腦沒有回報醒來。可以再按一次「喚醒」，或打開「詳細資料與紀錄」看紀錄。</div>');
+  }
+}
+async function runAction(id, a) {
+  if (a.op === "wake") return runWake(id);
+  results.set(id, { html: stepsHtml([{ t: "送到板子", s: "run" }]) }); renderCard(id);
+  const r = await send(id, a.op, a.args);
+  if (r.ok && a.op === "rescue") {
+    const d = liveOf(id);
+    d.rescueAt = Date.now(); d.rescueAp = r.ap || (d.status || {}).ap;
+    results.set(id, { html: rescueGuide(d.rescueAp) });
+  } else {
+    results.set(id, {
+      html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && a.done_hint ? '<div class="hint">' + esc(a.done_hint) + "</div>" : ""),
+      cls: r.ok ? "ok" : "bad",
+    });
+    if (r.ok) vibrate();
+  }
   renderCard(id);
 }
 
@@ -629,7 +862,7 @@ async function saveSection(id, sid, btn) {
     toggleSection(id, sid, false); renderCard(id);
     return;
   }
-  if (s.confirm_text && !confirm(s.label + "（" + devName(id) + "）\n" + s.confirm_text)) return;
+  if (s.confirm_text && !(await sheet({ title: s.label + "（" + devName(id) + "）", text: s.confirm_text, ok: "儲存" }))) return;
   btn.disabled = true;
   const [op, extra] = s.save ? s.save(Object.assign({}, cfg, all)) : ["set", { section: sid, values: changed }];
   const r = await send(id, op, extra);
@@ -641,21 +874,35 @@ async function saveSection(id, sid, btn) {
 
 /* ---------- card buttons the page itself owns ---------- */
 async function act(id, what, btn) {
+  const d = liveOf(id);
   if (what === "journal") {
     btn.disabled = true;
     const r = await send(id, "journal");
     btn.disabled = false;
-    cardFor(id).querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
+    if (r.ok) { d.journal = (r.lines || []).concat(); d.tlAll = true; }
+    else results.set(id, { html: "✗ " + esc(r.msg), cls: "bad" });
+    renderCard(id);
+    return;
+  }
+  if (what === "tl-all") { d.tlAll = true; renderCard(id); return; }
+  if (what === "cancel-wake") { d.cancelWake = true; return; }
+  if (what === "usbdbg-off") {
+    if (!(await sheet({ title: "關閉 USB 除錯埠（" + devName(id) + "）", ok: "關閉並重新開機",
+      text: "板子會重新開機（約 20 秒離線），之後只當純鍵盤，下次睡眠就叫得醒。\n睡著的電腦可能會被叫醒一下又回去睡。" }))) return;
+    const r = d.ui ? await send(id, "set", { section: "usbdbg", values: { usbdbg: false } }) : await send(id, "set_usb_debug", { on: false });
+    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
+    renderCard(id);
     return;
   }
   if (what === "rename") {
-    const name = prompt("新的名稱", devName(id));
-    if (name === null || !name.trim()) return;
-    saveRegistry(registry.map((x) => (x.id === id ? { id, name: name.trim() } : x)));
+    const name = await sheet({ title: "改名稱", input: devName(id), ok: "儲存" });
+    if (!name) return;
+    saveRegistry(registry.map((x) => (x.id === id ? { id, name } : x)));
     return;
   }
   if (what === "remove") {
-    if (!confirm("把「" + devName(id) + "」從清單移除？\n板子本身和它的雲端帳號不會被刪除；要徹底移除，請另外到 EMQX 刪掉帳號「" + id + "」。")) return;
+    if (!(await sheet({ title: "把「" + devName(id) + "」從清單移除？", ok: "移除", danger: true,
+      text: "板子本身和它的雲端帳號不會被刪除；要徹底移除，請另外到 EMQX 刪掉帳號「" + id + "」。" }))) return;
     results.delete(id);
     saveRegistry(registry.filter((x) => x.id !== id));
     /* clear its retained messages so it does not show up again under 發現的裝置 until it reconnects */
@@ -723,8 +970,9 @@ function renderAdd() {
     <div class="row"><button class="primary" id="aDone">完成</button></div>`;
   c.querySelectorAll("button[data-copy]").forEach((b) => { b.onclick = () => copy(b.dataset.copy, b); });
   try { new QRCode($("aQr"), { text: a.code, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L }); } catch (e) { $("aQr").remove(); }
-  $("aDone").onclick = () => {
-    if (!online && !confirm("板子還沒上線。現在關掉的話，這組密碼和配對碼就看不到了，要重來得先在 EMQX 刪掉帳號。確定關掉？")) return;
+  $("aDone").onclick = async () => {
+    if (!online && !(await sheet({ title: "板子還沒上線，確定關掉？", ok: "關掉", danger: true,
+      text: "現在關掉的話，這組密碼和配對碼就看不到了，要重來得先在 EMQX 刪掉帳號。" }))) return;
     adding = null; renderAdd(); renderAll();
   };
 }
@@ -766,6 +1014,22 @@ function disconnect() {
 $("logout").onclick = () => { disconnect(); showLogin(); };
 $("forget").onclick = () => { clearLogin(); disconnect(); $("pass").value = ""; showLogin(); $("pass").value = ""; };
 setInterval(() => { if (registry) registry.forEach((x) => renderCard(x.id)); }, 30000);
+
+/* Back from the background (phone app switch, screen on): the socket is often dead
+   while the client still thinks it is connected, so reconnect at once instead of
+   waiting up to a keepalive; the retained statuses then refresh every card. */
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (!login || !client) return;
+  if (!client.connected || Date.now() - hiddenAt > 15000) connect(login, true, true);
+  if (registry) registry.forEach((x) => renderCard(x.id));
+});
+
+/* Opens instantly and offline from the copy sw.js keeps (GitHub Pages is https). */
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
 
 const saved = loadLogin();
 if (saved && saved.pass) connect(saved, true); else showLogin();
