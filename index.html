@@ -410,10 +410,8 @@ async function act(id, what, btn) {
   }
   if (what === "usbdbg") {
     const on = !(liveOf(id).status || {}).usbdbg_set;
-    if (!confirm((on ? "開啟" : "關閉") + "「" + devName(id) + "」的 USB 除錯序列埠？
-板子會重新開機（約 20 秒離線）。" +
-                 (on ? "" : "
-關閉後只當純鍵盤；Modern Standby 筆電要這樣才叫得醒。"))) return;
+    if (!confirm((on ? "開啟" : "關閉") + "「" + devName(id) + "」的 USB 除錯序列埠？\n板子會重新開機（約 20 秒離線）。" +
+                 (on ? "" : "\n關閉後只當純鍵盤；Modern Standby 筆電要這樣才叫得醒。"))) return;
     const r = await send(id, "set_usb_debug", { on });
     results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
     renderCard(id);
