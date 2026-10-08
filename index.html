@@ -803,9 +803,9 @@ function infoValue(it, ui, view) {
   }
   return html;
 }
-const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb",
+const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb", "夜間模式": "moon",
   "已運作": "clock", "開機原因": "restart", "記憶體": "chip", "斷線次數": "cloudOff" };
-const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], usbdbg: ["usb", "t-gray"] };
+const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], night: ["moon", "t-moon"], usbdbg: ["usb", "t-gray"] };
 
 /* ---------- computer state ---------- */
 function stateOf(id, d, st) {
