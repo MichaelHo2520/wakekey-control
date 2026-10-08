@@ -1439,7 +1439,7 @@ function renderAdd() {
     <h3><span class="gi">${ICON.sparkle}</span>新增「${esc(a.name)}」</h3>
     <p class="hint">密碼只顯示這一次，照順序做完再關掉。</p>
     <div class="step"><span class="n">1</span><b>在 EMQX 建立帳號</b>
-      <p class="hint"><a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener" style="color:var(--a1)">EMQX 控制台</a> → 部署 → 存取控制 → 認證 → 使用者 → 新增（<a href="guide.html#device" target="_blank" rel="noopener" style="color:var(--a1)">圖文步驟</a>）</p>
+      <p class="hint"><a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener" style="color:var(--a1)">EMQX 控制台</a> → 部署 → 存取控制 → 認證 → 使用者 → 新增（<a href="guide.html#device" target="_blank" rel="noopener" style="color:var(--a1)">圖文步驟</a>；也可以<a href="guide.html#ai" target="_blank" rel="noopener" style="color:var(--a1)">交給 AI 自動建立</a>）</p>
       <div class="copy"><span class="k">帳號</span><code>${esc(a.id)}</code>${cp(a.id)}</div>
       <div class="copy"><span class="k">密碼</span><code>${esc(a.pw)}</code>${cp(a.pw)}</div></div>
     <div class="step"><span class="n">2</span><b>把配對碼存進板子</b>

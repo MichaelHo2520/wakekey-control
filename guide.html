@@ -82,6 +82,10 @@ nav.toc ol { columns: 2; column-gap: 24px; }
 pre { background: var(--field); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; overflow-x: auto;
   font: .84rem/1.5 ui-monospace, "SF Mono", Consolas, monospace; }
 .muted { color: var(--muted); font-size: .88rem; }
+.prompt { position: relative; }
+.prompt pre { white-space: pre-wrap; padding-top: 44px; }
+.copybtn { position: absolute; top: 8px; right: 8px; font: 600 .86rem/1 inherit; padding: 8px 14px; border-radius: 99px; border: 0; cursor: pointer;
+  color: #fff; background: linear-gradient(135deg, var(--a1), var(--a2)); }
 </style>
 </head>
 <body>
@@ -102,7 +106,7 @@ pre { background: var(--field); border: 1px solid var(--line); border-radius: va
       <li><a href="#device">新增一顆 WakeKey</a></li>
       <li><a href="#remove">移除設備</a></li>
       <li><a href="#usage">免費額度與費用</a></li>
-      <li><a href="#api">進階：API Key</a></li>
+      <li><a href="#ai">用 AI 快速新增設備</a></li>
       <li><a href="#faq">常見問題</a></li>
     </ol>
   </nav>
@@ -223,20 +227,45 @@ pre { background: var(--field); border: 1px solid var(--line); border-radius: va
   </ul>
 </section>
 
-<section class="card" id="api">
-  <h2><span class="n">10</span>進階：API Key（選用）</h2>
-  <p>只有想用電腦上的 <code>tools/emqx_add_device.py</code> 一行指令建立設備帳號，才需要這一步；用控制網頁加第 7 節的手動步驟就完全不需要。</p>
-  <p><b>API Key 是什麼</b>：EMQX 發給「程式」用的帳密（App ID ＋ App Secret）。程式沒辦法替你登入控制台的網頁，所以要用它呼叫 EMQX 的 API。</p>
+<section class="card" id="ai">
+  <h2><span class="n">10</span>用 AI 快速新增設備（選用）</h2>
+  <p>第 7 節要在兩個網站之間複製貼上。這一節改成：把下面的提示詞貼給 AI，它會下載小工具、幫你建好 EMQX 帳號，最後給你配對碼，你只要把配對碼貼進板子。</p>
+  <div class="box tip">
+    <p><b>需要</b>：一台有 Python 3 的電腦，加上一個<b>能在你電腦上執行指令</b>的 AI，例如 Claude Code、Claude 桌面版的 Code 模式。只能聊天的 AI（一般網頁版聊天）沒辦法執行，請改用第 7 節。</p>
+  </div>
+
+  <h3>A. 第一次：建立 API Key（之後都不用再做）</h3>
+  <p><b>API Key</b> 是 EMQX 發給「程式」用的帳密（App ID ＋ App Secret）。程式沒辦法替你登入 EMQX 的網頁，所以要用它直接叫 EMQX 建帳號。</p>
   <ol>
-    <li><b class="ui">Deployment Overview</b> → <b class="ui">Deployment API Key</b> → <b class="ui">+ New API Key</b>。</li>
-    <li>畫面顯示 <b>App ID</b> 和 <b>App Secret</b>。<b>App Secret 只會顯示這一次</b>，馬上抄下來。Serverless 的 API Key 一律是完整權限。</li>
-    <li>在韌體專案的 <code>secrets/emqx.txt</code>（不會進 git）加上三行：
-<pre>api_url=https://（API 位址）/api/v5
-api_app_id=（App ID）
-api_app_secret=（App Secret）</pre></li>
-    <li>之後：<code>python tools/emqx_add_device.py add home --name 家裡筆電</code>（印出配對碼並加進控制網頁清單）、<code>list</code>、<code>remove home</code>。</li>
+    <li>EMQX 控制台 → 點你的部署 → <b class="ui">Deployment Overview</b> → <b class="ui">Deployment API Key</b> → <b class="ui">+ New API Key</b>。</li>
+    <li>畫面顯示 <b>App ID</b> 和 <b>App Secret</b>。<b>App Secret 只顯示這一次</b>，先留在畫面上，等 AI 請你填設定檔時再複製進去（或先存進密碼管理器）。</li>
   </ol>
-  <div class="box caution"><p><b>尚未驗證</b>：EMQX 官方文件沒寫清楚 Serverless 的 API 位址顯示在哪裡，也沒列出「新增 MQTT 帳號」的 API；這支工具用的是 EMQX 5 標準的路徑（<code>/authentication/password_based:built_in_database/users</code>）。第一次用時如果出現 404 之類的錯誤，代表 Serverless 不支援，就照第 7 節手動新增。</p></div>
+  <div class="box caution"><p>API Key 可以管理整個 broker，跟 <code>wk-admin</code> 密碼一樣重要。<b>只填進你電腦上的設定檔，不要貼到 AI 的對話裡</b>；下面的提示詞也會要求 AI 不要跟你要密碼。</p></div>
+
+  <h3>B. 每次新增：把提示詞貼給 AI</h3>
+  <p>小工具：<a href="emqx_add_device.py" download>emqx_add_device.py</a>（不含任何密碼；提示詞裡已經寫好下載網址，AI 會自己下載）。</p>
+  <div class="prompt">
+    <button type="button" class="copybtn" data-copy="aiPrompt">複製提示詞</button>
+<pre id="aiPrompt">請幫我在 EMQX 建立一顆 WakeKey 新設備的帳號。照下面的步驟做，每一步做完跟我說結果：
+
+1. 在我的使用者資料夾裡建立資料夾 wakekey-tools（已經有就沿用），把
+   https://michaelho2520.github.io/wakekey-control/emqx_add_device.py
+   下載到裡面。之後的指令都在這個資料夾執行。
+2. 確認電腦有 Python 3，然後執行：python -m pip install paho-mqtt
+3. 如果資料夾裡還沒有 emqx.txt，執行：python emqx_add_device.py init
+   然後請我自己用記事本打開 emqx.txt，填入 broker_host、wk-admin、api_app_id、api_app_secret 並存檔。
+   重要：不要叫我把密碼或 API Key 貼在對話裡，也不要讀出、顯示或複製 emqx.txt 的內容。
+4. 我說填好之後，執行：python emqx_add_device.py check
+   有錯誤就用白話告訴我原因和怎麼修。
+5. 問我新設備的「代號」（英文小寫、數字、-，2–16 字，例如 home）和「顯示名稱」（例如 家裡筆電），然後執行：
+   python emqx_add_device.py add 代號 --name "顯示名稱"
+6. 把印出的配對碼（wk1: 開頭）完整給我，提醒我它含有設備密碼，並告訴我把它貼到：
+   板子網頁「設定 → 雲端 → 輸入配對碼」，或設定熱點頁的「雲端配對碼」。
+7. 任何一步出現 404 或其他無法解決的錯誤，就停下來告訴我，並建議改用手動步驟：
+   https://michaelho2520.github.io/wakekey-control/guide.html#device</pre>
+  </div>
+  <p class="muted">小工具還有：<code>python emqx_add_device.py list</code>（列出帳號）、<code>remove 代號</code>（刪帳號並從控制網頁清單移除）。設定檔 <code>emqx.txt</code> 含密碼，請留在自己的電腦，不要上傳。</p>
+  <div class="box caution"><p><b>尚未驗證</b>：EMQX 官方文件沒有列出 Serverless 方案「用 API 新增帳號」的功能，這個工具用的是 EMQX 5 的標準 API。第一次用時如果出現 404，表示這個方案不支援，請改用第 7 節。</p></div>
 </section>
 
 <section class="card" id="faq">
@@ -254,5 +283,20 @@ api_app_secret=（App Secret）</pre></li>
   <p class="muted">本頁依 EMQX Cloud 官方文件整理（2026-10-08）；控制台的按鈕名稱以英文介面為準，EMQX 改版時可能略有不同。</p>
 </section>
 </main>
+<script>
+/* copy buttons: <button data-copy="id"> copies that element's text */
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("[data-copy]");
+  if (!b) return;
+  var text = document.getElementById(b.dataset.copy).textContent, done = function () {
+    var o = b.textContent; b.textContent = "已複製"; setTimeout(function () { b.textContent = o; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  function fallback() {
+    var t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); done(); } catch (err) {} t.remove();
+  }
+});
+</script>
 </body>
 </html>
