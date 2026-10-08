@@ -262,7 +262,7 @@ main { max-width: 1120px; margin: 0 auto; }
 .row .rv { text-align: right; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; max-width: 60%; }
 .row .rv .ok { color: var(--ok); } .row .rv .bad { color: var(--bad); } .row .rv .warn { color: var(--warn); } .row .rv .muted { color: var(--faint); }
 button.row { width: 100%; text-align: left; }
-button.row .rl { font-weight: 600; }
+:is(button, a).row .rl { font-weight: 600; }
 button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--bad); }
 .row > svg.chev { width: 16px; height: 16px; opacity: .45; flex: none; }
 .fields { padding: 2px 0 6px; }
@@ -325,6 +325,7 @@ button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--ba
 .login p { text-align: center; color: var(--muted); margin: 4px 0 8px; font-size: .9rem; }
 .login .switch { margin-top: 16px; font-size: .9rem; }
 .login .gbtn { margin-top: 18px; }
+.guide-link { display: block; text-align: center; margin-top: 6px; font-size: .88rem; color: var(--a1); font-weight: 600; }
 
 /* sheet + toast */
 .sheet-bg { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; padding: 10px;
@@ -374,6 +375,7 @@ button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--ba
       <label class="switch">記住在這台裝置<input type="checkbox" id="remember" checked><i></i></label>
       <button class="gbtn primary wide" type="submit">連線</button>
       <div class="err" id="loginMsg"></div>
+      <a class="guide-link" href="guide.html">第一次使用？EMQX 設定教學</a>
     </form>
   </section>
 
@@ -1437,7 +1439,7 @@ function renderAdd() {
     <h3><span class="gi">${ICON.sparkle}</span>新增「${esc(a.name)}」</h3>
     <p class="hint">密碼只顯示這一次，照順序做完再關掉。</p>
     <div class="step"><span class="n">1</span><b>在 EMQX 建立帳號</b>
-      <p class="hint"><a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener" style="color:var(--a1)">EMQX 控制台</a> → 部署 → 存取控制 → 認證 → 使用者 → 新增</p>
+      <p class="hint"><a href="https://cloud-intl.emqx.com/console/" target="_blank" rel="noopener" style="color:var(--a1)">EMQX 控制台</a> → 部署 → 存取控制 → 認證 → 使用者 → 新增（<a href="guide.html#device" target="_blank" rel="noopener" style="color:var(--a1)">圖文步驟</a>）</p>
       <div class="copy"><span class="k">帳號</span><code>${esc(a.id)}</code>${cp(a.id)}</div>
       <div class="copy"><span class="k">密碼</span><code>${esc(a.pw)}</code>${cp(a.pw)}</div></div>
     <div class="step"><span class="n">2</span><b>把配對碼存進板子</b>
@@ -1468,6 +1470,8 @@ function renderAccount() {
   const h = `<div class="group glass">
     <div class="row"><span class="ri">${ICON.user}</span><span class="rl">${esc(login ? login.user : "")}</span><span class="rv">${n} 台裝置</span></div>
     <div class="row"><span class="ri">${ICON.cloud}</span><span class="rl">Broker</span><span class="rv">${esc(login ? login.host : "")}</span></div></div>
+    <div class="group glass">
+    <a class="row" href="guide.html" target="_blank" rel="noopener"><span class="ri">${ICON.info}</span><span class="rl">EMQX 設定教學</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</a></div>
     <div class="group glass">
     <button class="row" id="logout"><span class="ri">${ICON.logout}</span><span class="rl">登出</span></button>
     <button class="row danger" id="forget"><span class="ri">${ICON.trash}</span><span class="rl">登出並忘記密碼</span></button></div>`;

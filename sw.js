@@ -34,15 +34,18 @@ self.addEventListener("fetch", (e) => {
 
 async function page(req) {
   const cache = await caches.open(CACHE);
+  /* the control page under one key (it opens as ./ or ./index.html); others (guide.html) under their own */
+  const path = new URL(req.url).pathname;
+  const key = /\/(index\.html)?$/.test(path) ? PAGE : path;
   try {
     const res = await Promise.race([
       fetch(req),
       new Promise((_, reject) => setTimeout(() => reject(new Error("slow")), 3000)),
     ]);
-    if (res.ok) cache.put(PAGE, res.clone());
+    if (res.ok) cache.put(key, res.clone());
     return res;
   } catch (err) {
-    return (await cache.match(PAGE)) || fetch(req);
+    return (await cache.match(key)) || fetch(req);
   }
 }
 
