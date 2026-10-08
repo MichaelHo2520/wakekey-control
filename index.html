@@ -278,6 +278,16 @@ button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--ba
 [data-sec].dirty .save-row { display: flex; animation: viewin .2s ease-out; }
 .group > h3 .ib { margin-left: auto; width: 30px; height: 30px; background: none; border: none; box-shadow: none; color: var(--muted); }
 .group > h3 .ib svg { width: 19px; height: 19px; }
+/* settings sections start folded; tapping the header opens one */
+[data-sec] > h3 { margin: 0; gap: 4px; }
+.sec-t { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 12px 0; font-weight: 700; text-align: left; }
+.sec-t .lb { flex: 1; min-width: 0; }
+.sec-t em { font-style: normal; font-size: .72rem; font-weight: 600; color: var(--warn); display: none; }
+[data-sec].dirty:not(.open) .sec-t em { display: inline; }
+.sec-t svg.chev { width: 16px; height: 16px; opacity: .45; flex: none; transition: transform .2s; }
+[data-sec].open .sec-t svg.chev { transform: rotate(90deg); }
+[data-sec]:not(.open) .sec-b { display: none; }
+[data-sec].open .sec-b { animation: viewin .2s ease-out; }
 .sel { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .sel span { flex: none; min-width: 64px; font-size: .92rem; }
 .sel select { flex: 1; min-width: 0; padding: 10px 12px; }
@@ -1119,6 +1129,7 @@ async function runAction(id, a) {
 /* ---------- device page: 概況 / 設定 / 紀錄 ---------- */
 const TABS = [["info", "概況", "info"], ["set", "設定", "gear"], ["log", "紀錄", "clock"]];
 let devPage = null;   /* {id, tab} currently built */
+const openSecs = new Set();   /* "id/section" unfolded on the 設定 tab, kept across rebuilds */
 function renderDevice(id, tab, changed) {
   if (!TABS.some((t) => t[0] === tab)) tab = "info";
   const box = $("v-device"), d = liveOf(id), st = d.status || {}, ui = uiOf(d);
@@ -1204,11 +1215,13 @@ function setPane(id, d, st, ui) {
   return (ui.settings || []).map((s) => {
     const [ic, tg] = SECTION_LOOK[s.id] || ["gear", ""];
     const fields = s.fields || [], colors = fields.filter((f) => f.type === "color"), rest = fields.filter((f) => f.type !== "color");
-    return `<section class="group glass" data-sec="${esc(s.id)}"><h3><span class="gi ${tg}">${ICON[ic]}</span>${esc(s.label)}` +
+    const open = openSecs.has(id + "/" + s.id);
+    return `<section class="group glass${open ? " open" : ""}" data-sec="${esc(s.id)}"><h3>` +
+      `<button class="sec-t" data-act="sec" aria-expanded="${open}"><span class="gi ${tg}">${ICON[ic]}</span><span class="lb">${esc(s.label)}</span><em>未儲存</em>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` +
       (s.hint ? `<button class="ib" data-act="hint" aria-label="說明" aria-expanded="false">${ICON.info}</button>` : "") + `</h3>
-      <div class="fields">` + (s.hint ? `<p class="hint" hidden>${esc(s.hint)}</p>` : "") + rest.map((f) => fieldHtml(ui, f, cfg[f.key])).join("") +
+      <div class="sec-b"><div class="fields">` + (s.hint ? `<p class="hint" hidden>${esc(s.hint)}</p>` : "") + rest.map((f) => fieldHtml(ui, f, cfg[f.key])).join("") +
       (colors.length ? `<div class="colors">${colors.map((f) => fieldHtml(ui, f, cfg[f.key])).join("")}</div>` : "") +
-      `</div><div class="save-row"><button class="gbtn primary" data-save="${esc(s.id)}" disabled>儲存</button></div></section>`;
+      `</div><div class="save-row"><button class="gbtn primary" data-save="${esc(s.id)}" disabled>儲存</button></div></div></section>`;
   }).join("") + devGroup(id, ui, true);
 }
 function devGroup(id, ui, online) {
@@ -1268,9 +1281,17 @@ async function loadJournal(id) {
 async function act(id, what, btn) {
   const d = liveOf(id);
   if (what === "journal") { btn.disabled = true; await loadJournal(id); btn.disabled = false; return; }
-  if (what === "hint") {
-    const h = btn.closest("[data-sec]").querySelector(".hint"), open = h.hidden;
-    h.hidden = !open; btn.setAttribute("aria-expanded", String(open));
+  if (what === "sec" || what === "hint") {
+    const sec = btn.closest("[data-sec]"), key = id + "/" + sec.dataset.sec;
+    if (what === "hint") {
+      const h = sec.querySelector(".hint"), show = h.hidden || !sec.classList.contains("open");
+      h.hidden = !show; btn.setAttribute("aria-expanded", String(show));
+      if (!show) return;
+    }
+    const open = what === "hint" || !sec.classList.contains("open");
+    sec.classList.toggle("open", open);
+    sec.querySelector(".sec-t").setAttribute("aria-expanded", String(open));
+    if (open) openSecs.add(key); else openSecs.delete(key);
     return;
   }
   if (what === "cancel-wake") { d.cancelWake = true; return; }
