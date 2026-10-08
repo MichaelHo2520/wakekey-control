@@ -40,7 +40,7 @@ h1 .conn { font-size: .8rem; font-weight: 500; color: var(--muted); margin-left:
 h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
 label { display: block; font-size: .9rem; color: var(--muted); margin: 10px 0 4px; }
-input[type=text], input[type=password] {
+input[type=text], input[type=password], select {
   width: 100%; padding: 11px 12px; font-size: 1rem; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--text);
 }
@@ -288,7 +288,8 @@ function cardFor(id) {
     <div class="result"></div>
     <details><summary>詳細資料與紀錄</summary>
       <dl class="facts"></dl>
-      <div class="row"><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="usbdbg" hidden></button><button data-act="remove">移除</button></div>
+      <div class="row"><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="buttons" hidden>BOOT 按鈕</button><button data-act="usbdbg" hidden></button><button data-act="rescue" hidden>開設定熱點</button><button data-act="remove">移除</button></div>
+      <div class="btnform" hidden></div>
       <pre class="log"></pre>
     </details>`;
   el.addEventListener("click", (ev) => {
@@ -325,6 +326,24 @@ async function loadSeqs(id) {
   if (r.ok && Array.isArray(r.seqs)) { d.seqs = r.seqs.map((s) => s.name).filter(Boolean); renderCard(id); }
 }
 
+/* BOOT click actions as the board reports them: "none" | "wake" | "lock" | "seq:<name>" ("seq:" = deleted). */
+const BTN_LABEL = { none: "不動作", wake: "喚醒", lock: "鎖定電腦（Win+L）" };
+function btnLabel(a) {
+  if (a.startsWith("seq:")) return a.length > 4 ? "執行流程「" + a.slice(4) + "」" : "執行流程（已刪除）";
+  return BTN_LABEL[a] || a;
+}
+function buttonsForm(id) {
+  const d = liveOf(id), cur = (d.status || {}).btn || [];
+  const opts = ["none", "wake", "lock"].concat((d.seqs || []).map((n) => "seq:" + n));
+  return [1, 2, 3].map((n) => {
+    const v = cur[n - 1] || "none", list = opts.includes(v) ? opts : opts.concat([v]);
+    return `<label>點 ${n} 下</label><select data-n="${n}">` +
+      list.map((o) => `<option value="${esc(o)}"${o === v ? " selected" : ""}>${esc(btnLabel(o))}</option>`).join("") + "</select>";
+  }).join("") +
+    '<p class="muted">每下間隔 0.4 秒內算連按，存了立刻生效。指定解鎖流程時，任何人走到電腦旁連按都能解開它。</p>' +
+    '<div class="row"><button class="primary" data-act="btnsave">儲存</button><button data-act="btncancel">取消</button></div>';
+}
+
 function renderCard(id) {
   const el = cardFor(id), d = live.get(id) || { status: null, events: [] }, st = d.status || {};
   const online = st.online === true;
@@ -349,11 +368,15 @@ function renderCard(id) {
     <dt>PIN</dt><dd>${st.pin ? "已設定" : '<span class="muted">未設定</span>'}</dd>
     <dt>最近一次</dt><dd>${esc(st.last) || '<span class="muted">—</span>'}</dd>
     <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>` + (typeof st.usbdbg === "boolean" ? `
-    <dt>USB 除錯埠</dt><dd>${st.usbdbg ? "開" : "關（純鍵盤）"}${st.usbdbg_set !== st.usbdbg ? '<span class="muted">（已改，重開機後生效）</span>' : ""}</dd>` : "") + `
+    <dt>USB 除錯埠</dt><dd>${st.usbdbg ? "開" : "關（純鍵盤）"}${st.usbdbg_set !== st.usbdbg ? '<span class="muted">（已改，重開機後生效）</span>' : ""}</dd>` : "") + (Array.isArray(st.btn) ? `
+    <dt>BOOT 按鈕</dt><dd>${st.btn.map((a, i) => (i + 1) + " 下：" + esc(btnLabel(a))).join("<br>")}</dd>` : "") + `
     <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>` : "");
   const dbgBtn = el.querySelector("[data-act=usbdbg]");
   dbgBtn.hidden = !online || typeof st.usbdbg !== "boolean";
   dbgBtn.textContent = st.usbdbg_set ? "關閉 USB 除錯埠" : "開啟 USB 除錯埠";
+  el.querySelector("[data-act=buttons]").hidden = !online || !Array.isArray(st.btn);
+  el.querySelector("[data-act=rescue]").hidden = !online || !Array.isArray(st.btn);   /* same firmware generation */
+  if (!online) el.querySelector(".btnform").hidden = true;
   el.querySelector("pre.log").textContent = d.events.slice().reverse().join("\n") || "（還沒有事件）";
   const r = results.get(id), rEl = el.querySelector(".result");
   rEl.className = "result" + (r ? " show " + (r.cls || "") : "");
@@ -408,11 +431,35 @@ async function act(id, what, btn) {
     cardFor(id).querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
     return;
   }
+  if (what === "rescue") {
+    if (!confirm("讓「" + devName(id) + "」開啟設定熱點？\n板子會重開，熱點 WakeKey-Setup-XXXX 不用密碼，手機連上後開 http://192.168.4.1。" +
+                 "\n熱點開著時板子離線（不連原本的 Wi-Fi），10 分鐘沒有裝置連上就會自動回去。")) return;
+    const r = await send(id, "rescue");
+    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
+    renderCard(id);
+    return;
+  }
   if (what === "usbdbg") {
     const on = !(liveOf(id).status || {}).usbdbg_set;
     if (!confirm((on ? "開啟" : "關閉") + "「" + devName(id) + "」的 USB 除錯序列埠？\n板子會重新開機（約 20 秒離線）。" +
                  (on ? "" : "\n關閉後只當純鍵盤；Modern Standby 筆電要這樣才叫得醒。"))) return;
     const r = await send(id, "set_usb_debug", { on });
+    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
+    renderCard(id);
+    return;
+  }
+  if (what === "buttons" || what === "btncancel") {
+    const f = cardFor(id).querySelector(".btnform");
+    f.hidden = what === "btncancel" || !f.hidden;
+    if (!f.hidden) f.innerHTML = buttonsForm(id);
+    return;
+  }
+  if (what === "btnsave") {
+    const f = cardFor(id).querySelector(".btnform");
+    const btn = [...f.querySelectorAll("select")].map((s) => s.value);
+    if (btn.some((a) => a.startsWith("seq:")) && !confirm("BOOT 按鈕會執行按鍵流程（可能包含 PIN）。\n任何人走到「" + devName(id) + "」旁邊連按都能觸發，確定？")) return;
+    const r = await send(id, "set_buttons", { btn });
+    if (r.ok) f.hidden = true;
     results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
     renderCard(id);
     return;
