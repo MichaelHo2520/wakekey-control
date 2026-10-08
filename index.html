@@ -40,6 +40,7 @@ h1 .conn { font-size: .8rem; font-weight: 500; color: var(--muted); margin-left:
 h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
 label { display: block; font-size: .9rem; color: var(--muted); margin: 10px 0 4px; }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 6px 0 0; }
 input[type=text], input[type=password], select {
   width: 100%; padding: 11px 12px; font-size: 1rem; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--text);
@@ -55,14 +56,21 @@ button.wide { width: 100%; padding: 14px; font-size: 1.05rem; margin-top: 12px; 
 button.link { background: none; border: none; color: var(--accent); padding: 6px 4px; }
 .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
 .acts button { padding: 18px 8px; font-size: 1.2rem; font-weight: 600; border-radius: 14px; }
-.acts button.arm { background: var(--confirm); border-color: var(--confirm); color: #fff; }
+button.arm { background: var(--confirm); border-color: var(--confirm); color: #fff; }
 .acts.more { margin-top: 10px; }
-.acts.more button { padding: 12px 8px; font-size: 1rem; font-weight: 500; position: relative; overflow: hidden; }
-.acts.more button.hold::after { content: ""; position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--bad);
+.acts.more button { padding: 12px 8px; font-size: 1rem; font-weight: 500; }
+.acts .muted { grid-column: 1 / -1; text-align: center; padding: 12px 0; }
+button { position: relative; overflow: hidden; }
+button.hold::after { content: ""; position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: var(--bad);
   transform-origin: left; animation: hold 2s linear forwards; }
 @keyframes hold { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .row button { flex: 1 1 auto; }
+.tools { display: contents; }
+.secform { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+.secform h2 { font-size: .98rem; margin: 0; }
+label.color { display: flex; align-items: center; gap: 10px; color: var(--text); margin: 8px 0; }
+label.color input { width: 44px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 .dev-head { display: flex; align-items: center; gap: 10px; }
 .dev-name { font-size: 1.2rem; font-weight: 700; }
 .dev-sub { color: var(--muted); font-size: .9rem; margin-top: 2px; }
@@ -202,7 +210,7 @@ function connect(l, fromSaved) {
     everConnected = true;
     setConn("已連線", "ok");
     $("login").hidden = true; $("app").hidden = false; $("foot").hidden = false;
-    client.subscribe([REG_TOPIC, "wakekey/+/status", "wakekey/+/event", "wakekey/+/resp"], { qos: 1 });
+    client.subscribe([REG_TOPIC, "wakekey/+/status", "wakekey/+/event", "wakekey/+/resp", "wakekey/+/ui"], { qos: 1 });
     /* a retained registry arrives right after SUBACK; if none does, start with an empty list */
     setTimeout(() => { if (registry === null) { registry = []; renderAll(); } }, 2500);
     renderAll();
@@ -224,7 +232,7 @@ function onMessage(topic, payload) {
     renderAll();
     return;
   }
-  const m = topic.match(/^wakekey\/([^/]+)\/(status|event|resp)$/);
+  const m = topic.match(/^wakekey\/([^/]+)\/(status|event|resp|ui)$/);
   if (!m || m[1].startsWith("_")) return;
   const [, id, kind] = m;
   if (kind === "resp") {
@@ -234,6 +242,12 @@ function onMessage(topic, payload) {
     return;
   }
   const d = liveOf(id);
+  if (kind === "ui") {
+    let u = null; try { u = text ? JSON.parse(text) : null; } catch (e) {}
+    d.ui = u && typeof u === "object" && Array.isArray(u.actions) ? u : null;
+    renderAll();
+    return;
+  }
   if (kind === "status") {
     if (!text) { live.delete(id); renderAll(); return; }   /* retained status cleared (device removed) */
     try { d.status = JSON.parse(text); } catch (e) { return; }
@@ -266,43 +280,150 @@ function saveRegistry(list) {
   renderAll();
 }
 
+/* ---------- what a board offers ---------- */
+/* Boards publish wakekey/<id>/ui (retained): the buttons, settings and detail rows to show,
+   see main/ui.c in the firmware repo. This page only knows the generic pieces below, so a new
+   board feature needs no change here. Boards from before that get legacyUi(), which rebuilds
+   what this page used to hard-code from their status message. */
+const CONFIRMS = ["none", "twotap", "hold", "dialog"];
+const FIELD_TYPES = ["bool", "range", "select", "text", "secret", "color"];
+const INFO_CLS = ["ok", "warn", "bad", "muted"];
+/* Ops that press keys on the computer or take the board offline are never a single tap,
+   whatever a board's description says. */
+const NEEDS_CONFIRM = ["unlock", "test_seq", "reboot", "unpair", "rescue", "set_usb_debug", "set_pin", "clear_pin"];
+const SEQ_HINT = "按鍵過程在「詳細資料與紀錄」裡，大約 10–40 秒完成。";
+
+function legacyUi(d) {
+  const st = d.status || {}, seqs = d.seqs, has = (n) => !!(seqs && seqs.includes(n));
+  const seqAction = (name, label, confirm, group, more) =>
+    Object.assign({ id: "seq:" + name, label, op: "unlock", args: { seq: name }, confirm, group, done_hint: SEQ_HINT }, more);
+  const actions = [{ id: "wake", label: "喚醒", op: "wake", confirm: "none", group: "main" }];
+  if (!seqs || has("unlock")) actions.push(seqAction("unlock", "解鎖", "twotap", "main", { primary: true }));
+  if (has("standby")) actions.push(seqAction("standby", "待機", "twotap", "more"));
+  if (has("restart")) actions.push(seqAction("restart", "重新開機（長按）", "hold", "more",
+    { ask: "重新開機", confirm_text: "電腦上沒存檔的資料會不見。" }));
+  const settings = [], cfg = {};
+  if (Array.isArray(st.btn)) {
+    actions.push({ id: "rescue", label: "開設定熱點", op: "rescue", confirm: "dialog", group: "detail", ask: "開啟設定熱點",
+      confirm_text: "板子會重開，熱點 WakeKey-Setup-XXXX 不用密碼，手機連上後開 http://192.168.4.1。\n熱點開著時板子離線（不連原本的 Wi-Fi），10 分鐘沒有裝置連上就會自動回去。" });
+    settings.push({ id: "btn", label: "BOOT 按鈕", hint: "每下間隔 0.4 秒內算連按，存了立刻生效。指定解鎖流程時，任何人走到電腦旁連按都能解開它。",
+      fields: [1, 2, 3].map((n) => ({ key: "btn" + n, type: "select", label: "點 " + n + " 下", options: "btn_actions" })),
+      save: (v) => ["set_buttons", { btn: [v.btn1, v.btn2, v.btn3] }] });
+    st.btn.forEach((a, i) => { cfg["btn" + (i + 1)] = a; });
+  }
+  if (typeof st.led === "number") {
+    settings.push({ id: "led", label: "狀態燈", hint: "存了立刻生效。顏色在板子網頁的「設定 → 狀態燈」調整。",
+      fields: [{ key: "led", type: "range", min: 0, max: 10, zero: "關", label: "亮度" }],
+      save: (v) => ["set_led", { lvl: v.led }] });
+    cfg.led = st.led;
+  }
+  if (typeof st.usbdbg === "boolean") {
+    settings.push({ id: "usbdbg", label: "USB 除錯埠", hint: "關閉後只當純鍵盤；Modern Standby 筆電要這樣才叫得醒。",
+      confirm_text: "改了之後板子會重新開機（約 20 秒離線）。",
+      fields: [{ key: "usbdbg", type: "bool", label: "開啟 USB 除錯序列埠" }],
+      save: (v) => ["set_usb_debug", { on: v.usbdbg }] });
+    cfg.usbdbg = st.usbdbg_set;
+  }
+  const btnActions = [["none", "不動作"], ["wake", "喚醒"], ["lock", "鎖定電腦（Win+L）"]]
+    .concat((seqs || []).map((n) => ["seq:" + n, "執行流程「" + n + "」"]), (st.btn || []).includes("seq:") ? [["seq:", "執行流程（已刪除）"]] : []);
+  const info = [
+    { label: "遠端喚醒", key: "rwake", map: { 1: "允許", 0: ["未允許", "bad"], "-1": ["尚未得知", "muted"] } },
+    { label: "PIN", key: "pin", map: { true: "已設定", false: ["未設定", "muted"] } },
+    { label: "最近一次", key: "last", empty: "—" },
+    { label: "Wi-Fi", fmt: "{ssid}（{rssi} dBm）" },
+    { label: "USB 除錯埠", key: "usbdbg", map: { true: "開", false: "關（純鍵盤）" }, pending: { key: "cfg.usbdbg", text: "（已改，重開機後生效）" } },
+    { label: "BOOT 按鈕", lines: [1, 2, 3].map((n) => ({ prefix: n + " 下：", key: "cfg.btn" + n, options: "btn_actions" })) },
+  ];
+  return { v: 1, legacy: true, actions, settings, options: { btn_actions: btnActions }, info, cfg };
+}
+
+/* null while a board that has a description has not sent it yet */
+function uiOf(d) {
+  if (d.ui) return d.ui;
+  const st = d.status;
+  if (st && st.uirev === undefined) return legacyUi(d);
+  return null;
+}
+/* status plus the current setting values, for "key" paths like "cfg.led" */
+function viewOf(d, ui) { return Object.assign({}, d.status || {}, { cfg: (ui && ui.cfg) || ((d.status || {}).cfg) || {} }); }
+function getPath(o, path) { return String(path).split(".").reduce((x, k) => (x == null ? undefined : x[k]), o); }
+function confirmOf(a) {
+  if (!CONFIRMS.includes(a.confirm)) return null;          /* needs a newer page */
+  return a.confirm === "none" && NEEDS_CONFIRM.includes(a.op) ? "twotap" : a.confirm;
+}
+function optionList(ui, f) { return Array.isArray(f.options) ? f.options : ((ui.options || {})[f.options] || []); }
+function optionLabel(list, v) { const o = list.find((x) => x[0] === v); return o ? o[1] : v; }
+function infoText(it, ui, view) {
+  const v = getPath(view, it.key);
+  if (v === undefined || v === null || v === "") return null;
+  const m = it.map && it.map[String(v)];
+  let html;
+  if (m !== undefined) {
+    html = Array.isArray(m) ? (INFO_CLS.includes(m[1]) ? `<span class="${m[1]}">${esc(m[0])}</span>` : esc(m[0])) : esc(m);
+  } else if (it.options) {
+    html = esc(optionLabel(optionList(ui, it), v));
+  } else {
+    html = esc(it.fmt ? it.fmt.replace("{}", v) : v);
+  }
+  return html + esc(it.suffix || "");
+}
+function infoRow(it, ui, view) {
+  let html;
+  if (Array.isArray(it.lines)) {
+    const parts = it.lines.map((l) => { const t = infoText(l, ui, view); return t === null ? null : esc(l.prefix || "") + t; }).filter((x) => x !== null);
+    html = parts.length ? parts.join("<br>") : null;
+  } else if (it.key) {
+    html = infoText(it, ui, view);
+  } else if (it.fmt) {
+    html = esc(it.fmt.replace(/\{([\w.]+)\}/g, (_, k) => getPath(view, k) ?? ""));
+  }
+  if (html === null || html === undefined) {
+    if (!it.empty) return "";
+    html = `<span class="muted">${esc(it.empty)}</span>`;
+  }
+  if (it.pending) {
+    const p = getPath(view, it.pending.key);
+    if (p !== undefined && p !== getPath(view, it.key)) html += `<span class="muted">${esc(it.pending.text)}</span>`;
+  }
+  return `<dt>${esc(it.label)}</dt><dd>${html}</dd>`;
+}
+
 /* ---------- device cards ---------- */
 const cards = new Map();   /* id -> element */
 const results = new Map(); /* id -> {html, cls} kept across re-renders */
-
 function pcLine(st) {
   if (!st || st.online !== true) return "";
   if (st.usb === "suspended") return '<span class="warn">電腦睡眠中</span>';
   if (st.usb === "awake") return '<span class="ok">電腦醒著</span>';
   return '<span class="bad">板子沒接到電腦</span>';
 }
-
 function cardFor(id) {
   if (cards.has(id)) return cards.get(id);
   const el = document.createElement("section");
   el.className = "card";
   el.innerHTML = `
     <div class="dev-head"><span class="dot"></span><div><div class="dev-name"></div><div class="dev-sub"></div></div><span class="pill"></span></div>
-    <div class="acts"><button data-act="wake">喚醒</button><button class="primary" data-act="unlock">解鎖</button></div>
-    <div class="acts more" hidden><button data-act="standby" hidden>待機</button><button data-hold="restart" hidden>重新開機（長按）</button></div>
+    <div class="acts main"></div>
+    <div class="acts more" hidden></div>
     <div class="result"></div>
     <details><summary>詳細資料與紀錄</summary>
       <dl class="facts"></dl>
-      <div class="row"><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="buttons" hidden>BOOT 按鈕</button><button data-act="usbdbg" hidden></button><button data-act="rescue" hidden>開設定熱點</button><button data-act="remove">移除</button></div>
-      <div class="btnform" hidden></div>
+      <div class="row"><span class="tools"></span><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="remove">移除</button></div>
+      <div class="forms"></div>
       <pre class="log"></pre>
     </details>`;
   el.addEventListener("click", (ev) => {
-    const b = ev.target.closest("button[data-act]");
-    if (b) act(id, b.dataset.act, b);
-  });
-  holdButton(el.querySelector("[data-hold=restart]"), () => {
-    if (confirm("重新開機「" + devName(id) + "」？\n電腦上沒存檔的資料會不見。")) run(id, "seq", "restart");
+    const b = ev.target.closest("button");
+    if (!b) return;
+    if (b.dataset.a) doAction(id, b.dataset.a, b);
+    else if (b.dataset.sec) toggleSection(id, b.dataset.sec);
+    else if (b.dataset.save) saveSection(id, b.dataset.save, b);
+    else if (b.dataset.cancel) toggleSection(id, b.dataset.cancel, false);
+    else if (b.dataset.act) act(id, b.dataset.act, b);
   });
   cards.set(id, el);
   return el;
 }
-
 /* Long press (2 s, matches the CSS bar) before a destructive action; releasing early cancels. */
 function holdButton(btn, fn) {
   let t = null;
@@ -315,8 +436,7 @@ function holdButton(btn, fn) {
   ["pointerup", "pointerleave", "pointercancel"].forEach((e) => btn.addEventListener(e, stop));
   btn.addEventListener("contextmenu", (ev) => ev.preventDefault());
 }
-
-/* Which named sequences a board has decides the extra buttons (standby / restart) and whether 解鎖 exists. */
+/* Boards without a description: which named sequences they have decides 解鎖 / 待機 / 重新開機. */
 async function loadSeqs(id) {
   const d = liveOf(id);
   if (d.seqsLoading || d.seqs) return;
@@ -325,25 +445,36 @@ async function loadSeqs(id) {
   d.seqsLoading = false;
   if (r.ok && Array.isArray(r.seqs)) { d.seqs = r.seqs.map((s) => s.name).filter(Boolean); renderCard(id); }
 }
-
-/* BOOT click actions as the board reports them: "none" | "wake" | "lock" | "seq:<name>" ("seq:" = deleted). */
-const BTN_LABEL = { none: "不動作", wake: "喚醒", lock: "鎖定電腦（Win+L）" };
-function btnLabel(a) {
-  if (a.startsWith("seq:")) return a.length > 4 ? "執行流程「" + a.slice(4) + "」" : "執行流程（已刪除）";
-  return BTN_LABEL[a] || a;
+/* Rebuild the buttons only when the description changes, so an armed or held button survives re-renders. */
+function buildButtons(id, el, ui) {
+  const key = ui ? JSON.stringify([ui.actions, ui.settings]) : "";
+  if (el._uiKey === key) return;
+  el._uiKey = key;
+  el._ui = ui;
+  const main = el.querySelector(".acts.main"), more = el.querySelector(".acts.more"), tools = el.querySelector(".tools");
+  main.innerHTML = ""; more.innerHTML = ""; tools.innerHTML = "";
+  el.querySelector(".forms").innerHTML = "";
+  if (!ui) { main.innerHTML = '<div class="muted">讀取功能清單…</div>'; more.hidden = true; return; }
+  (ui.actions || []).forEach((a) => {
+    const b = document.createElement("button");
+    b.textContent = a.label;
+    b.dataset.label = a.label;
+    if (a.primary) b.className = "primary";
+    const c = confirmOf(a);
+    if (!c) { b.dataset.unsupported = "1"; b.title = "需要更新控制頁"; }
+    else if (c === "hold") holdButton(b, () => runConfirmed(id, a));
+    else b.dataset.a = a.id;
+    b._action = a;
+    (a.group === "main" ? main : a.group === "more" ? more : tools).appendChild(b);
+  });
+  more.hidden = !more.children.length;
+  (ui.settings || []).forEach((s) => {
+    const b = document.createElement("button");
+    b.textContent = s.label;
+    b.dataset.sec = s.id;
+    tools.appendChild(b);
+  });
 }
-function buttonsForm(id) {
-  const d = liveOf(id), cur = (d.status || {}).btn || [];
-  const opts = ["none", "wake", "lock"].concat((d.seqs || []).map((n) => "seq:" + n));
-  return [1, 2, 3].map((n) => {
-    const v = cur[n - 1] || "none", list = opts.includes(v) ? opts : opts.concat([v]);
-    return `<label>點 ${n} 下</label><select data-n="${n}">` +
-      list.map((o) => `<option value="${esc(o)}"${o === v ? " selected" : ""}>${esc(btnLabel(o))}</option>`).join("") + "</select>";
-  }).join("") +
-    '<p class="muted">每下間隔 0.4 秒內算連按，存了立刻生效。指定解鎖流程時，任何人走到電腦旁連按都能解開它。</p>' +
-    '<div class="row"><button class="primary" data-act="btnsave">儲存</button><button data-act="btncancel">取消</button></div>';
-}
-
 function renderCard(id) {
   const el = cardFor(id), d = live.get(id) || { status: null, events: [] }, st = d.status || {};
   const online = st.online === true;
@@ -354,36 +485,25 @@ function renderCard(id) {
   const pill = el.querySelector(".pill");
   pill.textContent = online ? (st.busy ? "執行中…" : "在線") : "離線";
   pill.className = "pill " + (online ? (st.busy ? "warn" : "ok") : "bad");
-  el.querySelectorAll(".acts button").forEach((b) => { if (!b.classList.contains("arm")) b.disabled = !online || !!st.busy; });
-  if (online && !d.seqs) loadSeqs(id);
-  const has = (n) => !!(d.seqs && d.seqs.includes(n));
-  el.querySelector("[data-act=unlock]").hidden = !!d.seqs && !has("unlock");
-  el.querySelector("[data-act=standby]").hidden = !has("standby");
-  el.querySelector("[data-hold=restart]").hidden = !has("restart");
-  el.querySelector(".acts.more").hidden = !has("standby") && !has("restart");
-  const rw = st.rwake === 1 ? "允許" : st.rwake === 0 ? '<span class="bad">未允許</span>' : '<span class="muted">尚未得知</span>';
+  if (online && !d.ui && st.uirev === undefined && !d.seqs) loadSeqs(id);
+  const ui = uiOf(d);
+  buildButtons(id, el, ui);
+  el.querySelectorAll(".acts button, .tools button").forEach((b) => {
+    if (b.classList.contains("arm")) return;
+    const detail = !!b.dataset.sec || (b._action && b._action.group !== "main" && b._action.group !== "more");
+    b.disabled = !online || !!b.dataset.unsupported || (!detail && !!st.busy);
+  });
+  if (!online) el.querySelector(".forms").innerHTML = "";
+  const view = viewOf(d, ui);
   el.querySelector(".facts").innerHTML = `
-    <dt>代號</dt><dd>${esc(id)}</dd>` + (online ? `
-    <dt>遠端喚醒</dt><dd>${rw}</dd>
-    <dt>PIN</dt><dd>${st.pin ? "已設定" : '<span class="muted">未設定</span>'}</dd>
-    <dt>最近一次</dt><dd>${esc(st.last) || '<span class="muted">—</span>'}</dd>
-    <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>` + (typeof st.usbdbg === "boolean" ? `
-    <dt>USB 除錯埠</dt><dd>${st.usbdbg ? "開" : "關（純鍵盤）"}${st.usbdbg_set !== st.usbdbg ? '<span class="muted">（已改，重開機後生效）</span>' : ""}</dd>` : "") + (Array.isArray(st.btn) ? `
-    <dt>BOOT 按鈕</dt><dd>${st.btn.map((a, i) => (i + 1) + " 下：" + esc(btnLabel(a))).join("<br>")}</dd>` : "") + `
+    <dt>代號</dt><dd>${esc(id)}</dd>` + (online ? (ui ? (ui.info || []).map((it) => infoRow(it, ui, view)).join("") : "") + `
     <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>` : "");
-  const dbgBtn = el.querySelector("[data-act=usbdbg]");
-  dbgBtn.hidden = !online || typeof st.usbdbg !== "boolean";
-  dbgBtn.textContent = st.usbdbg_set ? "關閉 USB 除錯埠" : "開啟 USB 除錯埠";
-  el.querySelector("[data-act=buttons]").hidden = !online || !Array.isArray(st.btn);
-  el.querySelector("[data-act=rescue]").hidden = !online || !Array.isArray(st.btn);   /* same firmware generation */
-  if (!online) el.querySelector(".btnform").hidden = true;
   el.querySelector("pre.log").textContent = d.events.slice().reverse().join("\n") || "（還沒有事件）";
   const r = results.get(id), rEl = el.querySelector(".result");
   rEl.className = "result" + (r ? " show " + (r.cls || "") : "");
   rEl.innerHTML = r ? r.html : "";
   return el;
 }
-
 function renderAll() {
   const box = $("devices");
   if (registry === null) { box.innerHTML = '<div class="card empty">讀取裝置清單…</div>'; return; }
@@ -400,7 +520,6 @@ function renderAll() {
   $("found").innerHTML = found.map(([id, d]) =>
     `<div class="found"><span class="dot on"></span><span><b>${esc(id)}</b> <span class="muted">${esc(d.status.ssid || "")}</span></span><button class="primary" data-add="${esc(id)}">加入</button></div>`).join("");
 }
-
 $("found").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-add]");
   if (!b) return;
@@ -409,7 +528,6 @@ $("found").addEventListener("click", (ev) => {
   if (name === null) return;
   saveRegistry(registry.concat([{ id, name: name.trim() || id }]));
 });
-
 /* Two taps for anything that presses keys on the computer: first tap arms, second runs. */
 function armOrRun(btn, label, fn) {
   if (btn.classList.contains("arm")) {
@@ -419,49 +537,115 @@ function armOrRun(btn, label, fn) {
   btn.classList.add("arm"); btn.textContent = "再按一次確認";
   btn._t = setTimeout(() => { btn.classList.remove("arm"); btn.textContent = label; }, ARM_MS);
 }
+function askText(id, what, text) { return (what) + "「" + devName(id) + "」？" + (text ? "\n" + text : ""); }
+function doAction(id, aid, btn) {
+  const a = btn._action;
+  if (!a || a.id !== aid) return;
+  const c = confirmOf(a);
+  if (c === "twotap") armOrRun(btn, btn.dataset.label, () => runAction(id, a));
+  else if (c === "dialog") runConfirmed(id, a);
+  else if (c === "none") runAction(id, a);
+}
+/* hold and dialog: ask first when the board gave a reason (hold), always for dialog */
+function runConfirmed(id, a) {
+  if ((a.confirm === "dialog" || a.confirm_text) && !confirm(askText(id, a.ask || a.label, a.confirm_text))) return;
+  runAction(id, a);
+}
+async function runAction(id, a, attempt) {
+  attempt = attempt || 0;
+  results.set(id, { html: "送出中…" }); renderCard(id);
+  const r = await send(id, a.op, a.args);
+  let wait = r.retry_after, max = r.retry_max || 3;
+  /* boards without a description: the wake refusal right after the computer went to sleep */
+  if (wait === undefined && a.op === "wake" && /剛進入睡眠/.test(r.msg || "")) wait = 10;
+  if (!r.ok && wait > 0 && attempt < max) {
+    results.set(id, { html: esc(r.msg) + "<br>" + wait + " 秒後自動再試（第 " + (attempt + 1) + "／" + max + " 次）…", cls: "warn" });
+    renderCard(id);
+    setTimeout(() => runAction(id, a, attempt + 1), wait * 1000);
+    return;
+  }
+  results.set(id, {
+    html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && a.done_hint ? '<div class="hint">' + esc(a.done_hint) + "</div>" : ""),
+    cls: r.ok ? "ok" : "bad",
+  });
+  renderCard(id);
+}
 
+/* ---------- settings forms ---------- */
+function rangeText(f, v) { return v === 0 && f.zero ? f.zero : v + " / " + f.max; }
+function fieldHtml(ui, f, v) {
+  const k = `data-k="${esc(f.key)}" data-t="${esc(f.type)}"`;
+  switch (f.type) {
+    case "bool":
+      return `<label class="check"><input type="checkbox" ${k}${v ? " checked" : ""}> ${esc(f.label)}</label>`;
+    case "range": {
+      const n = typeof v === "number" ? v : (f.min || 0);
+      return `<label>${esc(f.label)}：<b class="lvl">${esc(rangeText(f, n))}</b></label>` +
+        `<input type="range" ${k} min="${+f.min || 0}" max="${+f.max || 0}" step="${+f.step || 1}" value="${n}">`;
+    }
+    case "select": {
+      const list = optionList(ui, f), opts = list.some((o) => o[0] === v) || v === undefined ? list : list.concat([[v, v]]);
+      return `<label>${esc(f.label)}</label><select ${k}>` +
+        opts.map((o) => `<option value="${esc(o[0])}"${o[0] === v ? " selected" : ""}>${esc(o[1])}</option>`).join("") + "</select>";
+    }
+    case "text":
+      return `<label>${esc(f.label)}</label><input type="text" ${k} value="${esc(v)}"${f.max ? ' maxlength="' + (+f.max) + '"' : ""} autocomplete="off">`;
+    case "secret":
+      return `<label>${esc(f.label)}</label><input type="password" ${k} autocomplete="new-password" placeholder="留空＝不變更">`;
+    case "color":
+      return `<label class="color"><input type="color" ${k} value="${esc(/^#[0-9a-f]{6}$/i.test(v || "") ? v : "#000000")}"> ${esc(f.label)}</label>`;
+  }
+  return `<p class="muted">「${esc(f.label)}」需要更新控制頁才能設定。</p>`;
+}
+function toggleSection(id, sid, open) {
+  const el = cardFor(id), ui = uiOf(liveOf(id)) || el._ui, s = ui && (ui.settings || []).find((x) => x.id === sid);
+  const forms = el.querySelector(".forms"), cur = forms.dataset.sec;
+  forms.innerHTML = ""; delete forms.dataset.sec;
+  if (!s || open === false || cur === sid) return;
+  const cfg = viewOf(liveOf(id), ui).cfg;
+  forms.dataset.sec = sid;
+  forms.innerHTML = `<div class="secform"><h2>${esc(s.label)}</h2>` +
+    (s.fields || []).map((f) => fieldHtml(ui, f, cfg[f.key])).join("") +
+    (s.hint ? `<p class="muted">${esc(s.hint)}</p>` : "") +
+    `<div class="row"><button class="primary" data-save="${esc(sid)}">儲存</button><button data-cancel="${esc(sid)}">取消</button></div></div>`;
+  forms.querySelectorAll("input[type=range]").forEach((r) => {
+    const f = s.fields.find((x) => x.key === r.dataset.k);
+    r.addEventListener("input", () => { r.previousElementSibling.querySelector(".lvl").textContent = rangeText(f, +r.value); });
+  });
+}
+async function saveSection(id, sid, btn) {
+  const el = cardFor(id), ui = uiOf(liveOf(id)) || el._ui, s = ui && (ui.settings || []).find((x) => x.id === sid);
+  if (!s) return;
+  const cfg = viewOf(liveOf(id), ui).cfg, all = {}, changed = {};
+  el.querySelectorAll(".forms [data-k]").forEach((i) => {
+    const t = i.dataset.t, k = i.dataset.k;
+    const v = t === "bool" ? i.checked : t === "range" ? +i.value : i.value;
+    if (t === "secret" && !v) return;
+    all[k] = v;
+    if (t === "secret" || v !== cfg[k]) changed[k] = v;
+  });
+  if (!Object.keys(changed).length) {
+    results.set(id, { html: "沒有變更", cls: "" });
+    toggleSection(id, sid, false); renderCard(id);
+    return;
+  }
+  if (s.confirm_text && !confirm(s.label + "（" + devName(id) + "）\n" + s.confirm_text)) return;
+  btn.disabled = true;
+  const [op, extra] = s.save ? s.save(Object.assign({}, cfg, all)) : ["set", { section: sid, values: changed }];
+  const r = await send(id, op, extra);
+  btn.disabled = false;
+  results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
+  if (r.ok) toggleSection(id, sid, false);
+  renderCard(id);
+}
+
+/* ---------- card buttons the page itself owns ---------- */
 async function act(id, what, btn) {
-  if (what === "unlock") { armOrRun(btn, "解鎖", () => run(id, "unlock")); return; }
-  if (what === "standby") { armOrRun(btn, "待機", () => run(id, "seq", "standby")); return; }
-  if (what === "wake") { await run(id, "wake"); return; }
   if (what === "journal") {
     btn.disabled = true;
     const r = await send(id, "journal");
     btn.disabled = false;
     cardFor(id).querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
-    return;
-  }
-  if (what === "rescue") {
-    if (!confirm("讓「" + devName(id) + "」開啟設定熱點？\n板子會重開，熱點 WakeKey-Setup-XXXX 不用密碼，手機連上後開 http://192.168.4.1。" +
-                 "\n熱點開著時板子離線（不連原本的 Wi-Fi），10 分鐘沒有裝置連上就會自動回去。")) return;
-    const r = await send(id, "rescue");
-    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
-    renderCard(id);
-    return;
-  }
-  if (what === "usbdbg") {
-    const on = !(liveOf(id).status || {}).usbdbg_set;
-    if (!confirm((on ? "開啟" : "關閉") + "「" + devName(id) + "」的 USB 除錯序列埠？\n板子會重新開機（約 20 秒離線）。" +
-                 (on ? "" : "\n關閉後只當純鍵盤；Modern Standby 筆電要這樣才叫得醒。"))) return;
-    const r = await send(id, "set_usb_debug", { on });
-    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
-    renderCard(id);
-    return;
-  }
-  if (what === "buttons" || what === "btncancel") {
-    const f = cardFor(id).querySelector(".btnform");
-    f.hidden = what === "btncancel" || !f.hidden;
-    if (!f.hidden) f.innerHTML = buttonsForm(id);
-    return;
-  }
-  if (what === "btnsave") {
-    const f = cardFor(id).querySelector(".btnform");
-    const btn = [...f.querySelectorAll("select")].map((s) => s.value);
-    if (btn.some((a) => a.startsWith("seq:")) && !confirm("BOOT 按鈕會執行按鍵流程（可能包含 PIN）。\n任何人走到「" + devName(id) + "」旁邊連按都能觸發，確定？")) return;
-    const r = await send(id, "set_buttons", { btn });
-    if (r.ok) f.hidden = true;
-    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
-    renderCard(id);
     return;
   }
   if (what === "rename") {
@@ -474,30 +658,12 @@ async function act(id, what, btn) {
     if (!confirm("把「" + devName(id) + "」從清單移除？\n板子本身和它的雲端帳號不會被刪除；要徹底移除，請另外到 EMQX 刪掉帳號「" + id + "」。")) return;
     results.delete(id);
     saveRegistry(registry.filter((x) => x.id !== id));
-    /* clear its retained status so it does not show up again under 發現的裝置 until it reconnects */
+    /* clear its retained messages so it does not show up again under 發現的裝置 until it reconnects */
     client.publish("wakekey/" + id + "/status", "", { qos: 1, retain: true });
+    client.publish("wakekey/" + id + "/ui", "", { qos: 1, retain: true });
     live.delete(id);
     renderAll();
   }
-}
-
-/* what: "wake" | "unlock" (the board's own "unlock" sequence) | "seq" (another named sequence). */
-async function run(id, what, seq, retry) {
-  results.set(id, { html: "送出中…" }); renderCard(id);
-  const r = what === "wake" ? await send(id, "wake")
-          : await send(id, "unlock", { seq: what === "seq" ? seq : "unlock" });
-  /* The board refuses a wake within 30 s of the computer going to sleep; try again for the user. */
-  if (what === "wake" && !r.ok && /剛進入睡眠/.test(r.msg || "") && (retry || 0) < 3) {
-    results.set(id, { html: "電腦剛進入睡眠，板子要等 30 秒才能喚醒；10 秒後自動再試（第 " + ((retry || 0) + 1) + "／3 次）…", cls: "warn" });
-    renderCard(id);
-    setTimeout(() => run(id, "wake", null, (retry || 0) + 1), 10000);
-    return;
-  }
-  results.set(id, {
-    html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && what === "unlock" ? '<div class="hint">按鍵過程在「詳細資料與紀錄」裡，大約 10–40 秒完成。</div>' : ""),
-    cls: r.ok ? "ok" : "bad",
-  });
-  renderCard(id);
 }
 
 /* ---------- add device ---------- */
