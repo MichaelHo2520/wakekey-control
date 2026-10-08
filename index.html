@@ -287,7 +287,7 @@ function cardFor(id) {
     <div class="result"></div>
     <details><summary>詳細資料與紀錄</summary>
       <dl class="facts"></dl>
-      <div class="row"><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="remove">移除</button></div>
+      <div class="row"><button data-act="journal">完整紀錄</button><button data-act="rename">改名稱</button><button data-act="usbdbg" hidden></button><button data-act="remove">移除</button></div>
       <pre class="log"></pre>
     </details>`;
   el.addEventListener("click", (ev) => {
@@ -295,7 +295,7 @@ function cardFor(id) {
     if (b) act(id, b.dataset.act, b);
   });
   holdButton(el.querySelector("[data-hold=restart]"), () => {
-    if (confirm("重新開機「" + devName(id) + "」？\n電腦上沒存檔的資料會不見。")) run(id, "seq", false, "restart");
+    if (confirm("重新開機「" + devName(id) + "」？\n電腦上沒存檔的資料會不見。")) run(id, "seq", "restart");
   });
   cards.set(id, el);
   return el;
@@ -347,13 +347,16 @@ function renderCard(id) {
     <dt>遠端喚醒</dt><dd>${rw}</dd>
     <dt>PIN</dt><dd>${st.pin ? "已設定" : '<span class="muted">未設定</span>'}</dd>
     <dt>最近一次</dt><dd>${esc(st.last) || '<span class="muted">—</span>'}</dd>
-    <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>
+    <dt>Wi-Fi</dt><dd>${esc(st.ssid)}（${esc(st.rssi)} dBm）</dd>` + (typeof st.usbdbg === "boolean" ? `
+    <dt>USB 除錯埠</dt><dd>${st.usbdbg ? "開" : "關（純鍵盤）"}${st.usbdbg_set !== st.usbdbg ? '<span class="muted">（已改，重開機後生效）</span>' : ""}</dd>` : "") + `
     <dt>韌體</dt><dd>${esc(st.ver)}${st.ts ? '　<span class="muted">狀態更新於 ' + ago(st.ts) + "</span>" : ""}</dd>` : "");
+  const dbgBtn = el.querySelector("[data-act=usbdbg]");
+  dbgBtn.hidden = !online || typeof st.usbdbg !== "boolean";
+  dbgBtn.textContent = st.usbdbg_set ? "關閉 USB 除錯埠" : "開啟 USB 除錯埠";
   el.querySelector("pre.log").textContent = d.events.slice().reverse().join("\n") || "（還沒有事件）";
   const r = results.get(id), rEl = el.querySelector(".result");
   rEl.className = "result" + (r ? " show " + (r.cls || "") : "");
   rEl.innerHTML = r ? r.html : "";
-  if (r && r.force) rEl.querySelector("[data-force]").onclick = () => run(id, "unlock", true);
   return el;
 }
 
@@ -394,14 +397,25 @@ function armOrRun(btn, label, fn) {
 }
 
 async function act(id, what, btn) {
-  if (what === "unlock") { armOrRun(btn, "解鎖", () => run(id, "unlock", false)); return; }
-  if (what === "standby") { armOrRun(btn, "待機", () => run(id, "seq", false, "standby")); return; }
-  if (what === "wake") { await run(id, "wake", false); return; }
+  if (what === "unlock") { armOrRun(btn, "解鎖", () => run(id, "unlock")); return; }
+  if (what === "standby") { armOrRun(btn, "待機", () => run(id, "seq", "standby")); return; }
+  if (what === "wake") { await run(id, "wake"); return; }
   if (what === "journal") {
     btn.disabled = true;
     const r = await send(id, "journal");
     btn.disabled = false;
     cardFor(id).querySelector("pre.log").textContent = r.ok ? (r.lines || []).slice().reverse().join("\n") : r.msg;
+    return;
+  }
+  if (what === "usbdbg") {
+    const on = !(liveOf(id).status || {}).usbdbg_set;
+    if (!confirm((on ? "開啟" : "關閉") + "「" + devName(id) + "」的 USB 除錯序列埠？
+板子會重新開機（約 20 秒離線）。" +
+                 (on ? "" : "
+關閉後只當純鍵盤；Modern Standby 筆電要這樣才叫得醒。"))) return;
+    const r = await send(id, "set_usb_debug", { on });
+    results.set(id, { html: (r.ok ? "✓ " : "✗ ") + esc(r.msg), cls: r.ok ? "ok" : "bad" });
+    renderCard(id);
     return;
   }
   if (what === "rename") {
@@ -421,27 +435,22 @@ async function act(id, what, btn) {
   }
 }
 
-/* what: "wake" | "unlock" (the board's own "unlock" sequence) | "seq" (another named sequence).
-   The 2-per-hour limit protects the PIN; sequences without a PIN (standby/restart) always force it. */
-async function run(id, what, force, seq, retry) {
+/* what: "wake" | "unlock" (the board's own "unlock" sequence) | "seq" (another named sequence). */
+async function run(id, what, seq, retry) {
   results.set(id, { html: "送出中…" }); renderCard(id);
   const r = what === "wake" ? await send(id, "wake")
-          : await send(id, "unlock", { seq: what === "seq" ? seq : "unlock", force: what === "seq" ? true : force });
+          : await send(id, "unlock", { seq: what === "seq" ? seq : "unlock" });
   /* The board refuses a wake within 30 s of the computer going to sleep; try again for the user. */
   if (what === "wake" && !r.ok && /剛進入睡眠/.test(r.msg || "") && (retry || 0) < 3) {
     results.set(id, { html: "電腦剛進入睡眠，板子要等 30 秒才能喚醒；10 秒後自動再試（第 " + ((retry || 0) + 1) + "／3 次）…", cls: "warn" });
     renderCard(id);
-    setTimeout(() => run(id, "wake", false, null, (retry || 0) + 1), 10000);
+    setTimeout(() => run(id, "wake", null, (retry || 0) + 1), 10000);
     return;
   }
-  if (r.rate_limited) {
-    results.set(id, { html: esc(r.msg) + '<div class="row"><button class="primary" data-force>仍要執行</button></div>', cls: "warn", force: true });
-  } else {
-    results.set(id, {
-      html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && what === "unlock" ? '<div class="hint">按鍵過程在「詳細資料與紀錄」裡，大約 10–40 秒完成。</div>' : ""),
-      cls: r.ok ? "ok" : "bad",
-    });
-  }
+  results.set(id, {
+    html: (r.ok ? "✓ " : "✗ ") + esc(r.msg) + (r.ok && what === "unlock" ? '<div class="hint">按鍵過程在「詳細資料與紀錄」裡，大約 10–40 秒完成。</div>' : ""),
+    cls: r.ok ? "ok" : "bad",
+  });
   renderCard(id);
 }
 
