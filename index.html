@@ -159,7 +159,13 @@ main { max-width: 1120px; margin: 0 auto; }
 .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
 
-.hero { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: var(--r-lg); background: var(--glass-2); border: 1px solid var(--line); }
+/* status readout, not a control: no box and a flat round icon, so it can't be mistaken for the buttons below */
+.hero { display: flex; align-items: center; gap: 12px; padding: 0 6px 14px; border-bottom: 1px solid var(--line); --sc: var(--muted); }
+.hero.awake { --sc: var(--ok); } .hero.sleep { --sc: var(--sleep); } .hero.warn { --sc: var(--warn); }
+.hero .orb { width: 40px; height: 40px; border-radius: 50%; color: var(--sc); background: color-mix(in srgb, var(--sc) 16%, transparent); box-shadow: none; }
+.hero .orb svg { width: 22px; height: 22px; }
+.hero-t small { display: block; font-size: .72rem; font-weight: 600; color: var(--faint); letter-spacing: .06em; }
+.hero.awake .hero-t b, .hero.sleep .hero-t b, .hero.warn .hero-t b { color: var(--sc); }
 .orb { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; color: #fff; flex: none;
   background: linear-gradient(160deg, rgba(255, 255, 255, .35), transparent 50%), var(--og, linear-gradient(135deg, #9aa3b2, #6b7280));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 8px 20px -6px var(--oc, rgba(0, 0, 0, .3)); }
@@ -952,9 +958,9 @@ function renderCard(id) {
   badge.textContent = online ? (st.busy ? "執行中" : "在線") : "離線";
   badge.className = "badge " + (online ? (st.busy ? "warn" : "ok") : "bad");
   const sv = stateOf(id, d, st);
-  const hero = `<div class="orb ${sv.cls}">${ICON[sv.ic]}</div><div class="hero-t"><b>${sv.t}</b>${sv.s ? `<span>${sv.s}</span>` : ""}${sv.extra}</div>`;
+  const hero = `<div class="orb ${sv.cls}">${ICON[sv.ic]}</div><div class="hero-t"><small>目前狀態</small><b>${sv.t}</b>${sv.s ? `<span>${sv.s}</span>` : ""}${sv.extra}</div>`;
   const hEl = el.querySelector(".hero");
-  if (hEl._html !== hero) { hEl.innerHTML = hero; hEl._html = hero; }
+  if (hEl._html !== hero) { hEl.innerHTML = hero; hEl._html = hero; hEl.className = "hero " + sv.cls; }
   if (online && !d.ui && st.uirev === undefined && !d.seqs) loadSeqs(id);
   buildButtons(id, el, uiOf(d));
   el.querySelectorAll(".act, .chip").forEach((b) => {
