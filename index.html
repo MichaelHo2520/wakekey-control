@@ -276,6 +276,9 @@ button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--ba
 .sel span { flex: none; min-width: 64px; font-size: .92rem; }
 .sel select { flex: 1; min-width: 0; padding: 10px 12px; }
 .save-row .gbtn { padding: 10px 20px; }
+.prog { height: 6px; border-radius: 6px; background: var(--glass-3); overflow: hidden; margin: 2px 0 12px; }
+.prog i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--a1), var(--a2)); transition: width .3s; }
+.prog.ok i { background: var(--ok); } .prog.bad i { background: var(--bad); }
 .lvl { float: right; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px 12px; margin-top: 6px; }
 .color { display: flex; align-items: center; gap: 10px; font-size: .88rem; cursor: pointer; }
@@ -489,6 +492,7 @@ const ICON = {
   tag: S(`<path d="M3.6 12.5V4.6a1 1 0 0 1 1-1h7.9l8 8a1.4 1.4 0 0 1 0 2l-7.1 7.1a1.4 1.4 0 0 1-2 0z" ${F}/><circle cx="8" cy="8" r="1.4"/>`),
   copy: S(`<rect x="8.2" y="8.2" width="12.2" height="12.2" rx="2.6" ${F}/><path d="M15.8 8.2V5.6a2 2 0 0 0-2-2H5.6a2 2 0 0 0-2 2v8.2a2 2 0 0 0 2 2h2.6"/>`),
   refresh: S(`<path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20.2 3.8v4.6h-4.6"/>`),
+  upload: S(`<path d="M4 14.5v3.8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.8" ${F}/><path d="M12 15.5V3.8M7.4 8.2 12 3.6l4.6 4.6"/>`),
   sparkle: S(`<path d="M12 3.2l1.9 5.1 5.1 1.9-5.1 1.9-1.9 5.1-1.9-5.1L5 10.2l5.1-1.9z" ${F}/><path d="M18.6 15.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>`),
 };
 function signal(rssi) {
@@ -629,6 +633,7 @@ function onMessage(topic, payload) {
   const [, id, kind] = m;
   if (kind === "resp") {
     let r; try { r = JSON.parse(text); } catch (e) { return; }
+    if (r.ota) { const w = otaAcks.get(r.rid); if (w) { w.items.push(r); if (w.wake) w.wake(); } return; }
     const p = pending.get(r.rid);
     if (p) { clearTimeout(p.timer); pending.delete(r.rid); p.resolve(r); }
     return;
@@ -780,7 +785,8 @@ function infoValue(it, ui, view) {
   }
   return html;
 }
-const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb" };
+const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb",
+  "已運作": "clock", "開機原因": "restart", "記憶體": "chip", "斷線次數": "cloudOff" };
 const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], usbdbg: ["usb", "t-gray"] };
 
 /* ---------- computer state ---------- */
@@ -1144,7 +1150,7 @@ function renderDevice(id, tab, changed) {
   }
 }
 function infoPane(id, d, st, ui) {
-  if (!st.online) return `<div class="group glass"><div class="row"><span class="ri">${ICON.tag}</span><span class="rl">代號</span><span class="rv">${esc(id)}</span></div></div>`;
+  if (!st.online) return otaHtml(id) + `<div class="group glass"><div class="row"><span class="ri">${ICON.tag}</span><span class="rl">代號</span><span class="rv">${esc(id)}</span></div></div>`;
   const view = viewOf(d, ui);
   const rows = (ui ? ui.info || [] : []).filter((it) => it.label !== "Wi-Fi").map((it) => {
     const v = infoValue(it, ui, view);
@@ -1155,7 +1161,8 @@ function infoPane(id, d, st, ui) {
     <div class="group glass">
       <div class="row"><span class="ri">${ICON.tag}</span><span class="rl">代號</span><span class="rv">${esc(id)}</span></div>
       <div class="row"><span class="ri">${ICON.chip}</span><span class="rl">韌體</span><span class="rv">${esc(st.ver)}${st.ts ? " · " + ago(st.ts) : ""}</span></div>
-    </div>`;
+      ${st.ota >= 1 && !otaRuns.has(id) ? `<button class="row" data-act="ota"><span class="ri">${ICON.upload}</span><span class="rl">更新韌體</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` : ""}
+    </div>${otaHtml(id)}`;
 }
 function fieldHtml(ui, f, v) {
   const k = `data-k="${esc(f.key)}" data-t="${esc(f.type)}"`;
@@ -1259,6 +1266,9 @@ async function act(id, what, btn) {
     return;
   }
   if (what === "cancel-wake") { d.cancelWake = true; return; }
+  if (what === "ota") { pickFirmware(id); return; }
+  if (what === "ota-cancel") { const r = otaRuns.get(id); if (r) r.cancel = true; return; }
+  if (what === "ota-close") { otaRuns.delete(id); renderAll(); return; }
   if (what === "usbdbg-off") {
     if (!(await sheet({ icon: "usb", title: "關閉 USB 除錯埠？", ok: "關閉並重開",
       text: devName(id) + " 會重新開機（約 20 秒離線），之後只當純鍵盤，下次睡眠就叫得醒。" }))) return;
@@ -1283,6 +1293,111 @@ async function act(id, what, btn) {
     client.publish("wakekey/" + id + "/ui", "", { qos: 1, retain: true });
     live.delete(id);
     location.hash = "#/";
+  }
+}
+
+/* ---------- firmware update over the cloud (boards whose status has "ota") ---------- */
+/* The board takes the file in chunks on wakekey/<id>/ota (u32 session, u32 offset, data),
+   up to "window" of them unacked; each is acked on resp with the rid of ota_begin and
+   the offset the board needs next. The same offset twice means a chunk was dropped:
+   send again from there. See cloud.c. */
+const otaRuns = new Map();   /* id -> {pct, text, cls, to, cancel} */
+const otaAcks = new Map();   /* rid -> {items: acks not read yet, wake: waiting reader} */
+function otaHtml(id) {
+  const r = otaRuns.get(id);
+  if (!r) return "";
+  const btn = r.cls === "run" ? `<button class="gbtn" data-act="ota-cancel">取消</button>` : `<button class="gbtn" data-act="ota-close">關閉</button>`;
+  return `<div class="group glass"><div class="row"><span class="ri">${ICON.upload}</span><span class="rl">韌體更新${r.to ? " → " + esc(r.to) : ""}</span></div>
+    <div class="prog ${r.cls}"><i style="width:${Math.round(r.pct * 100)}%"></i></div>
+    <p class="hint" style="margin:0 0 8px">${esc(r.text)}</p><div class="save-row">${btn}</div></div>`;
+}
+function pickFirmware(id) {
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = ".bin";
+  inp.onchange = () => { if (inp.files[0]) startOta(id, inp.files[0]); };
+  inp.click();
+}
+/* esp_image_header_t (chip id at 12), then a segment header, then esp_app_desc_t at 32 */
+function imageInfo(buf) {
+  if (buf.byteLength < 288) return { err: "檔案太小，不是韌體" };
+  const dv = new DataView(buf), str = (o) => new TextDecoder().decode(new Uint8Array(buf, o, 32)).replace(/\0[\s\S]*$/, "");
+  if (dv.getUint8(0) !== 0xe9) return { err: "不是 ESP 韌體檔" };
+  if (dv.getUint32(32, true) !== 0xabcd5432) return { err: "這是 merged.bin，請改選 wakekey-ota.bin" };
+  if (dv.getUint16(12, true) !== 9) return { err: "韌體不是給 ESP32-S3 的" };
+  if (str(80) !== "wakekey") return { err: "不是 WakeKey 韌體" };
+  return { version: str(48) };
+}
+/* next ack for rid, or null after ms */
+function otaNext(rid, ms) {
+  const w = otaAcks.get(rid);
+  if (w.items.length) return Promise.resolve(w.items.shift());
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { w.wake = null; resolve(null); }, ms);
+    w.wake = () => { clearTimeout(t); w.wake = null; resolve(w.items.shift()); };
+  });
+}
+async function startOta(id, file) {
+  const buf = await file.arrayBuffer(), info = imageInfo(buf), st = liveOf(id).status || {};
+  if (info.err) { toast(info.err, false); return; }
+  if (!(await sheet({ icon: "upload", title: "更新「" + devName(id) + "」的韌體？", ok: "開始更新",
+    text: `${st.ver || "?"} → ${info.version}（${Math.round(buf.byteLength / 1024)} KB）。傳完板子會重新開機，大約離線 20 秒；新版開機失敗會自動退回舊版。傳送時請留在這一頁。` }))) return;
+  const run = { pct: 0, text: "準備中…", cls: "run", to: info.version, cancel: false };
+  otaRuns.set(id, run);
+  const show = (text, cls, pct) => { run.text = text; if (cls) run.cls = cls; if (pct !== undefined) run.pct = pct; renderAll(); };
+  let lock = null;
+  try { lock = await navigator.wakeLock.request("screen"); } catch (e) {}
+  try {
+    const sha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buf)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const r = await send(id, "ota_begin", { size: buf.byteLength, sha256: sha });
+    if (!r.ok) { show(r.msg || "板子沒有開始更新", "bad"); return; }
+    const sess = r.sess >>> 0, chunk = r.chunk || 8192, win = r.window || 1, size = buf.byteLength, t0 = Date.now();
+    otaAcks.set(r.rid, { items: [], wake: null });
+    const sendAt = (off) => {
+      const n = Math.min(chunk, size - off), msg = new Uint8Array(8 + n), dv = new DataView(msg.buffer);
+      dv.setUint32(0, sess, true); dv.setUint32(4, off, true);
+      msg.set(new Uint8Array(buf, off, n), 8);
+      if (client && client.connected) client.publish("wakekey/" + id + "/ota", msg, { qos: 1 });
+      return off + n;
+    };
+    let acked = 0, next = 0, misses = 0, rewound = -1;
+    const fill = () => { while (next < size && next < acked + win * chunk) next = sendAt(next); };
+    try {
+      fill();
+      for (;;) {
+        if (run.cancel) { send(id, "ota_abort"); show("已取消，板子繼續用原本的韌體", "bad"); return; }
+        const a = await otaNext(r.rid, 10000);
+        if (!a) {
+          if (++misses >= 4) {
+            if (acked + win * chunk >= size && next >= size) break;   /* the last acks got lost: the board may be restarting */
+            send(id, "ota_abort"); show("板子沒有回應，更新中止；板子繼續用原本的韌體", "bad"); return;
+          }
+          next = acked; fill();         /* resend everything not acked */
+          continue;
+        }
+        misses = 0;
+        if (a.ota === "fail") { show("更新失敗：" + (a.msg || "") + "；板子繼續用原本的韌體", "bad"); return; }
+        if (a.ota === "done") break;
+        if (a.off > acked) acked = a.off;
+        else if (a.off === acked && next > acked && rewound !== acked) { rewound = acked; next = acked; }   /* a chunk was dropped */
+        fill();
+        const s = (Date.now() - t0) / 1000, left = acked ? Math.round(s * (size - acked) / acked) : 0;
+        show(`傳送中 ${Math.round(acked / 1024)} / ${Math.round(size / 1024)} KB` + (acked > chunk * 3 ? `，約剩 ${left} 秒` : ""), null, acked / size * 0.97);
+      }
+    } finally {
+      otaAcks.delete(r.rid);
+    }
+    show("已寫入並驗證，板子重新開機中…", null, 0.98);
+    /* done when the board is back with the new version (it may also have rolled back);
+       only a status from after the restart counts, so re-sending the same version works */
+    const tDone = Date.now();
+    for (let i = 0; i < 60; i++) {
+      await sleep(2000);
+      const d2 = liveOf(id), s2 = d2.status || {};
+      if (d2.statusAt > tDone && s2.online && s2.ver === info.version && s2.up <= (Date.now() - tDone) / 1000 + 5) { show("已更新到 " + info.version + "，新版運作 30 秒後確認", "ok", 1); vibrate(); return; }
+    }
+    show("2 分鐘內沒看到新版上線，請看「紀錄」；新版開機失敗時會自動退回舊版", "bad");
+  } finally {
+    if (lock) lock.release().catch(() => {});
   }
 }
 
