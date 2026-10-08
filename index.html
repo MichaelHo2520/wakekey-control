@@ -251,7 +251,8 @@ main { max-width: 1120px; margin: 0 auto; }
 .page-h .orb { width: 48px; height: 48px; border-radius: 15px; }
 .page-h .orb svg { width: 26px; height: 26px; }
 .page-h b { display: block; font-size: 1.1rem; }
-.page-h span { display: block; font-size: .84rem; color: var(--muted); }
+.page-h span { display: block; font-size: .84rem; color: var(--muted); overflow-wrap: anywhere; }
+.page-h .badge { flex: none; }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 99px; margin-bottom: 14px; }
 .seg a { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 6px; border-radius: 99px; font-weight: 600; font-size: .92rem; color: var(--muted); transition: background .2s, color .2s; }
 .seg a svg { width: 18px; height: 18px; }
@@ -266,6 +267,10 @@ main { max-width: 1120px; margin: 0 auto; }
 .row .ri { color: var(--muted); flex: none; } .row .ri svg { width: 20px; height: 20px; }
 .row .rl { flex: 1; min-width: 0; }
 .row .rv { text-align: right; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; max-width: 60%; }
+/* label + value rows: when both do not fit on one line the value drops to its own line, right-aligned */
+.row:has(> .rv) { flex-wrap: wrap; row-gap: 2px; }
+.row:has(> .rv) .rl { flex: 1 0 auto; max-width: calc(100% - 32px); overflow-wrap: anywhere; }
+.row:has(> .rv) .rv { margin-left: auto; max-width: 100%; }
 .row .rv .ok { color: var(--ok); } .row .rv .bad { color: var(--bad); } .row .rv .warn { color: var(--warn); } .row .rv .muted { color: var(--faint); }
 button.row { width: 100%; text-align: left; }
 :is(button, a).row .rl { font-weight: 600; }
@@ -281,7 +286,10 @@ button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--ba
 /* settings sections start folded; tapping the header opens one */
 [data-sec] > h3 { margin: 0; gap: 4px; }
 .sec-t { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 12px 0; font-weight: 700; text-align: left; }
-.sec-t .lb { flex: 1; min-width: 0; }
+.sec-t .lb { flex: 1 0 auto; max-width: 100%; }
+.sec-t .sv { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; font-weight: 500; color: var(--muted); }
+.sec-t .sv.off { color: var(--faint); }
+[data-sec].open .sec-t .sv, [data-sec].dirty .sec-t .sv { display: none; }
 .sec-t em { font-style: normal; font-size: .72rem; font-weight: 600; color: var(--warn); display: none; }
 [data-sec].dirty:not(.open) .sec-t em { display: inline; }
 .sec-t svg.chev { width: 16px; height: 16px; opacity: .45; flex: none; transition: transform .2s; }
@@ -873,7 +881,7 @@ window.addEventListener("hashchange", () => { if (client) renderView(true); });
 function renderView(changed) {
   const r = route(), views = { home: "v-home", d: "v-device", add: "v-add", account: "v-account" };
   let name = views[r.name] ? r.name : "home";
-  if (name === "d" && registry && !registry.some((x) => x.id === r.id)) { location.hash = "#/"; return; }
+  if (name === "d" && registry && !registry.some((x) => x.id === r.id)) { go("#/"); return; }
   Object.entries(views).forEach(([k, v]) => { $(v).hidden = k !== name; });
   $("back").hidden = name === "home";
   $("brand").querySelector("img").hidden = name !== "home";
@@ -885,7 +893,25 @@ function renderView(changed) {
   else if (name === "account") renderAccount();
 }
 function renderAll() { if (client && $("v-login").hidden) renderView(false); }
-$("back").onclick = () => { location.hash = "#/"; };
+/* History stays at most one page deep: home, plus one page on top of it (marked {up: 1}).
+   Going home pops that page and moving between pages or tabs replaces it, so the phone's
+   back key on the home page leaves the app instead of stepping back through pages seen before. */
+function go(hash) {
+  const up = !!(history.state && history.state.up), show = () => { if (client) renderView(true); };
+  if (hash === "#/") {
+    if (route().name === "home") return;
+    if (up) history.back();
+    else { history.replaceState(null, "", "#/"); show(); }
+  } else if (route().name === "home" && !up) { history.pushState({ up: 1 }, "", hash); show(); }
+  else { history.replaceState(up ? { up: 1 } : null, "", hash); show(); }
+}
+document.addEventListener("click", (ev) => {
+  const a = ev.target.closest('a[href^="#/"]');
+  if (!a || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+  ev.preventDefault();
+  go(a.getAttribute("href"));
+});
+$("back").onclick = () => go("#/");
 
 /* ---------- home: device cards ---------- */
 const cards = new Map();   /* id -> element */
@@ -1115,7 +1141,7 @@ async function runAction(id, a) {
     const d = liveOf(id);
     d.rescueAt = Date.now(); d.rescueAp = r.ap || (d.status || {}).ap;
     results.set(id, { html: rescueGuide(d.rescueAp) });
-    if (route().name !== "home") location.hash = "#/";
+    if (route().name !== "home") go("#/");
   } else if (r.ok) {
     results.set(id, { html: `<div class="line ok">${ICON.check}<b>${esc(name)}</b></div><div class="msg">${esc(r.msg)}</div>`, cls: "ok" });
     vibrate();
@@ -1208,6 +1234,26 @@ function fieldHtml(ui, f, v) {
   return `<p class="hint">「${esc(f.label)}」需要更新控制頁才能設定。</p>`;
 }
 function rangeText(f, v) { return v === 0 && f.zero ? f.zero : v + " / " + f.max; }
+/* A section's current values in a few words, for its folded header: a leading on/off switch
+   that is off says just 關; 開始 + 結束 read as a time span; selects drop their （…） notes. */
+function secSummary(ui, s, cfg) {
+  const fields = (s.fields || []).filter((f) => cfg[f.key] !== undefined);
+  if (!fields.length) return "";
+  if (fields[0].type === "bool" && (fields.length === 1 || !cfg[fields[0].key])) return cfg[fields[0].key] ? "開" : "關";
+  const parts = [];
+  let none = false;
+  fields.forEach((f, i) => {
+    const v = cfg[f.key];
+    if (f.type === "range") parts.push(rangeText(f, v));
+    else if (f.type === "select") {
+      const t = String(optionLabel(optionList(ui, f), v)).replace(/（[^）]*）/g, "");
+      if (f.label === "結束" && parts.length && fields[i - 1].label === "開始") parts.push(parts.pop() + "–" + t);
+      else if (v === "none") none = true;
+      else parts.push((/^點 \d 下$/.test(f.label) ? f.label.slice(2) + " " : "") + t);
+    }
+  });
+  return parts.length ? parts.join(" · ") : none ? "不動作" : "";
+}
 function setPane(id, d, st, ui) {
   if (!st.online) return `<div class="glass empty"><div class="orb off">${ICON.cloudOff}</div>板子上線後才能修改設定</div>` + devGroup(id, ui, false);
   if (!ui) return `<div class="glass empty">讀取中…</div>`;
@@ -1215,9 +1261,10 @@ function setPane(id, d, st, ui) {
   return (ui.settings || []).map((s) => {
     const [ic, tg] = SECTION_LOOK[s.id] || ["gear", ""];
     const fields = s.fields || [], colors = fields.filter((f) => f.type === "color"), rest = fields.filter((f) => f.type !== "color");
-    const open = openSecs.has(id + "/" + s.id);
+    const open = openSecs.has(id + "/" + s.id), sum = secSummary(ui, s, cfg);
     return `<section class="group glass${open ? " open" : ""}" data-sec="${esc(s.id)}"><h3>` +
-      `<button class="sec-t" data-act="sec" aria-expanded="${open}"><span class="gi ${tg}">${ICON[ic]}</span><span class="lb">${esc(s.label)}</span><em>未儲存</em>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` +
+      `<button class="sec-t" data-act="sec" aria-expanded="${open}"><span class="gi ${tg}">${ICON[ic]}</span><span class="lb">${esc(s.label)}</span>` +
+      (sum ? `<span class="sv${sum === "關" ? " off" : ""}">${esc(sum)}</span>` : "") + `<em>未儲存</em>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` +
       (s.hint ? `<button class="ib" data-act="hint" aria-label="說明" aria-expanded="false">${ICON.info}</button>` : "") + `</h3>
       <div class="sec-b"><div class="fields">` + (s.hint ? `<p class="hint" hidden>${esc(s.hint)}</p>` : "") + rest.map((f) => fieldHtml(ui, f, cfg[f.key])).join("") +
       (colors.length ? `<div class="colors">${colors.map((f) => fieldHtml(ui, f, cfg[f.key])).join("")}</div>` : "") +
@@ -1321,7 +1368,7 @@ async function act(id, what, btn) {
     client.publish("wakekey/" + id + "/status", "", { qos: 1, retain: true });
     client.publish("wakekey/" + id + "/ui", "", { qos: 1, retain: true });
     live.delete(id);
-    location.hash = "#/";
+    go("#/");
   }
 }
 
@@ -1453,7 +1500,7 @@ function renderAdd() {
       if (id === "wk-admin") return bad("這個代號保留給控制網頁");
       if (registry.some((x) => x.id === id)) return bad("清單裡已經有這個代號");
       saveRegistry(registry.concat([{ id, name }]));
-      if (kind === "old") { adding = null; location.hash = "#/"; return; }
+      if (kind === "old") { adding = null; go("#/"); return; }
       const pw = randomPassword(24);
       adding = { stage: 2, id, name, pw, code: pairingCode(login.host, id, pw) };
       renderAdd();
@@ -1481,7 +1528,7 @@ function renderAdd() {
   $("aDone").onclick = async () => {
     if (!online && !(await sheet({ icon: "alert", title: "板子還沒上線，確定關掉？", ok: "關掉", danger: true,
       text: "關掉後就看不到這組密碼和配對碼，要重來得先到 EMQX 刪掉帳號。" }))) return;
-    adding = null; location.hash = "#/";
+    adding = null; go("#/");
   };
 }
 /* refresh the wizard's "等板子上線" line when that device comes online */
@@ -1524,7 +1571,7 @@ function disconnect() {
   live.clear(); cards.clear(); results.clear();
   $("devices").innerHTML = "";
   $("v-account")._html = "";
-  location.hash = "#/";
+  go("#/");
 }
 /* durations (睡眠中 · 12 分鐘, 幾分鐘前) */
 setInterval(renderAll, 30000);
