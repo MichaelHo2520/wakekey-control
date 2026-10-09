@@ -124,7 +124,7 @@ label.f { display: block; font-size: .85rem; color: var(--muted); margin: 14px 0
 
 /* ======================= header ======================= */
 .top { position: sticky; top: max(10px, env(safe-area-inset-top)); z-index: 10; display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px 7px 12px; border-radius: 99px; max-width: 1120px; margin: 0 auto 18px; }
+  padding: 7px 8px 7px 12px; border-radius: 99px; max-width: 1120px; margin: 0 auto 18px; transition: max-width .25s ease-out; }
 .brand { display: flex; align-items: center; gap: 9px; min-width: 0; font-weight: 700; font-size: 1.08rem; letter-spacing: .01em; }
 .brand img { width: 28px; height: 28px; border-radius: 8px; box-shadow: 0 2px 8px var(--shadow); flex: none; }
 .brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -874,6 +874,7 @@ function showLogin(msg, prefill) {
   $("remember").checked = loadLogin() ? true : $("remember").checked;
   $("loginMsg").textContent = msg || "";
   setConn("");
+  fitTop();
 }
 function showApp() { $("v-login").hidden = true; renderView(true); }
 window.addEventListener("hashchange", () => { if (client) renderView(true); });
@@ -891,7 +892,17 @@ function renderView(changed) {
   else if (name === "d") renderDevice(r.id, r.tab, changed);
   else if (name === "add") { if (!adding) adding = { stage: 1 }; if (changed) renderAdd(); }
   else if (name === "account") renderAccount();
+  fitTop();
 }
+/* The top bar spans exactly what is under it: the device cards on home (one card or a row of
+   them), the narrow column on the other pages, the login box. */
+function fitTop() {
+  const v = document.querySelector("main > .view:not([hidden])");
+  const els = !v ? [] : v.id === "v-home" ? [...$("devices").children] : v.id === "v-login" ? [$("loginForm")] : [v];
+  const rs = els.map((e) => e.getBoundingClientRect()).filter((r) => r.width);
+  document.querySelector(".top").style.maxWidth = rs.length ? Math.max(...rs.map((r) => r.right)) - Math.min(...rs.map((r) => r.left)) + "px" : "";
+}
+window.addEventListener("resize", fitTop);
 function renderAll() { if (client && $("v-login").hidden) renderView(false); }
 /* History stays at most one page deep: home, plus one page on top of it (marked {up: 1}).
    Going home pops that page and moving between pages or tabs replaces it, so the phone's
@@ -1234,25 +1245,22 @@ function fieldHtml(ui, f, v) {
   return `<p class="hint">「${esc(f.label)}」需要更新控制頁才能設定。</p>`;
 }
 function rangeText(f, v) { return v === 0 && f.zero ? f.zero : v + " / " + f.max; }
-/* A section's current values in a few words, for its folded header: a leading on/off switch
-   that is off says just 關; 開始 + 結束 read as a time span; selects drop their （…） notes. */
+/* A section's current value in a word or two, for its folded header:
+   - led on/off switch first (夜間模式, USB 除錯埠): 關, or when on its 開始–結束 span, else 開
+   - only selects that can be "none" (BOOT 按鈕): 開 when any of them does something, else 關
+   - otherwise the first range (狀態燈: 5 / 10, or its zero text) */
 function secSummary(ui, s, cfg) {
-  const fields = (s.fields || []).filter((f) => cfg[f.key] !== undefined);
+  const fields = (s.fields || []).filter((f) => cfg[f.key] !== undefined), pick = (l) => fields.find((f) => f.label === l);
   if (!fields.length) return "";
-  if (fields[0].type === "bool" && (fields.length === 1 || !cfg[fields[0].key])) return cfg[fields[0].key] ? "開" : "關";
-  const parts = [];
-  let none = false;
-  fields.forEach((f, i) => {
-    const v = cfg[f.key];
-    if (f.type === "range") parts.push(rangeText(f, v));
-    else if (f.type === "select") {
-      const t = String(optionLabel(optionList(ui, f), v)).replace(/（[^）]*）/g, "");
-      if (f.label === "結束" && parts.length && fields[i - 1].label === "開始") parts.push(parts.pop() + "–" + t);
-      else if (v === "none") none = true;
-      else parts.push((/^點 \d 下$/.test(f.label) ? f.label.slice(2) + " " : "") + t);
-    }
-  });
-  return parts.length ? parts.join(" · ") : none ? "不動作" : "";
+  if (fields[0].type === "bool") {
+    if (!cfg[fields[0].key]) return "關";
+    const a = pick("開始"), b = pick("結束"), t = (f) => optionLabel(optionList(ui, f), cfg[f.key]);
+    return a && b ? t(a) + "–" + t(b) : "開";
+  }
+  if (fields.every((f) => f.type === "select" && optionList(ui, f).some((o) => o[0] === "none")))
+    return fields.some((f) => cfg[f.key] !== "none") ? "開" : "關";
+  const r = fields.find((f) => f.type === "range");
+  return r ? rangeText(r, cfg[r.key]) : "";
 }
 function setPane(id, d, st, ui) {
   if (!st.online) return `<div class="glass empty"><div class="orb off">${ICON.cloudOff}</div>板子上線後才能修改設定</div>` + devGroup(id, ui, false);
