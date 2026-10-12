@@ -212,6 +212,26 @@ main { max-width: 1120px; margin: 0 auto; }
 .chip.hold .ring { opacity: 1; background: conic-gradient(var(--bad) calc(var(--p, 0) * 1%), transparent 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); }
 
 /* result / progress */
+/* relay (fan) on the card: a switch, not an action button */
+.relay { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: var(--r-md); background: var(--glass-2); border: 1px solid var(--line); }
+.relay[hidden] { display: none; }
+.relay .fi { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--muted); }
+.relay .fi svg { width: 22px; height: 22px; }
+.relay.on .fi { color: #0ea5e9; background: color-mix(in srgb, #0ea5e9 14%, transparent); }
+.relay.on .fi svg { animation: spin 1.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .relay.on .fi svg { animation: none; } }
+.relay .rt { flex: 1; min-width: 0; }
+.relay .rt b { display: block; font-size: .95rem; }
+.relay .rt small { display: block; font-size: .78rem; color: var(--muted); overflow-wrap: anywhere; }
+.relay .ib { width: 36px; height: 36px; color: var(--muted); }
+.tgl { width: 50px; height: 30px; border-radius: 99px; background: var(--line); position: relative; flex: none; border: none; padding: 0; cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--line); transition: background .2s; }
+.tgl::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); transition: transform .2s; }
+.tgl[aria-checked="true"] { background: linear-gradient(135deg, var(--a1), var(--a2)); }
+.tgl[aria-checked="true"]::after { transform: translateX(20px); }
+.tgl:disabled { opacity: .6; }
+.tgl:focus-visible { outline: 2px solid var(--a1); outline-offset: 2px; }
 .result { padding: 12px 14px; border-radius: var(--r-md); background: var(--glass-2); border: 1px solid var(--line); font-size: .9rem; }
 .result.ok { border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 .result.bad { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
@@ -362,6 +382,9 @@ button.row.danger { color: var(--bad); } button.row.danger .ri { color: var(--ba
 .sheet input { margin-top: 14px; }
 .sheet .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
 .sheet .btns .gbtn { padding: 14px; }
+.sheet .btns .gbtn:only-child { grid-column: 1 / -1; }
+.sheet .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.sheet .choices .gbtn { padding: 14px; }
 @keyframes up { from { transform: translateY(30px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
 @media (min-width: 640px) { .sheet-bg { align-items: center; } }
@@ -520,6 +543,7 @@ const ICON = {
   refresh: S(`<path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20.2 3.8v4.6h-4.6"/>`),
   upload: S(`<path d="M4 14.5v3.8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.8" ${F}/><path d="M12 15.5V3.8M7.4 8.2 12 3.6l4.6 4.6"/>`),
   sparkle: S(`<path d="M12 3.2l1.9 5.1 5.1 1.9-5.1 1.9-1.9 5.1-1.9-5.1L5 10.2l5.1-1.9z" ${F}/><path d="M18.6 15.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>`),
+  fan: S([0, 120, 240].map((r) => `<path d="M12 9.6c-1.2-2.6-.6-5.8 1.9-6.2 2.6-.4 3.6 3.2.6 6.6z" transform="rotate(${r} 12 12)" ${F}/>`).join("") + `<circle cx="12" cy="12" r="2"/>`),
 };
 function signal(rssi) {
   const n = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -75 ? 2 : 1;
@@ -569,7 +593,8 @@ $("addLink").innerHTML = ICON.plus + "新增裝置";
 $("acctLink").innerHTML = ICON.user + "帳號";
 
 /* ---------- sheet (replaces prompt / confirm) and toast ---------- */
-/* Resolves true (or the typed text when o.input is given), or null when cancelled. */
+/* Resolves true (or the typed text when o.input is given, or the picked value when
+   o.choices = [[value, label], ...] is given), or null when cancelled. */
 function sheet(o) {
   return new Promise((resolve) => {
     const bg = document.createElement("div");
@@ -577,8 +602,9 @@ function sheet(o) {
     const orb = o.icon ? `<div class="orb ${o.danger ? "warn" : ""}" style="${o.danger ? "" : "--og:linear-gradient(135deg,var(--a1),var(--a2))"}">${ICON[o.icon]}</div>` : "";
     bg.innerHTML = `<div class="sheet glass" role="dialog" aria-modal="true">${orb}<h3></h3><p></p>` +
       (o.input !== undefined ? '<input type="text" class="in" autocomplete="off">' : "") +
+      (o.choices ? `<div class="choices">${o.choices.map((c, i) => `<button class="gbtn" data-i="${i}">${esc(c[1])}</button>`).join("")}</div>` : "") +
       `<div class="btns"><button class="gbtn no">${esc(o.cancel || "取消")}</button>` +
-      `<button class="gbtn yes ${o.danger ? "danger" : "primary"}">${esc(o.ok || "確定")}</button></div></div>`;
+      (o.choices ? "" : `<button class="gbtn yes ${o.danger ? "danger" : "primary"}">${esc(o.ok || "確定")}</button>`) + `</div></div>`;
     bg.querySelector("h3").textContent = o.title || "";
     const p = bg.querySelector("p");
     if (o.text) p.textContent = o.text; else p.remove();
@@ -593,10 +619,11 @@ function sheet(o) {
     const key = (e) => { if (e.key === "Escape") done(null); else if (e.key === "Enter" && inp) yes(); };
     bg.addEventListener("click", (e) => { if (e.target === bg) done(null); });
     bg.querySelector(".no").onclick = () => done(null);
-    bg.querySelector(".yes").onclick = yes;
+    if (o.choices) bg.querySelectorAll(".choices button").forEach((b) => { b.onclick = () => done(o.choices[+b.dataset.i][0]); });
+    else bg.querySelector(".yes").onclick = yes;
     document.addEventListener("keydown", key);
     document.body.appendChild(bg);
-    if (inp) { inp.focus(); inp.select(); } else bg.querySelector(".yes").focus();
+    if (inp) { inp.focus(); inp.select(); } else bg.querySelector(o.choices ? ".choices button" : ".yes").focus();
   });
 }
 let toastT = null;
@@ -813,7 +840,7 @@ function infoValue(it, ui, view) {
 }
 const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb", "夜間模式": "moon",
   "已運作": "clock", "開機原因": "restart", "記憶體": "chip", "斷線次數": "cloudOff" };
-const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], night: ["moon", "t-moon"], usbdbg: ["usb", "t-gray"] };
+const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], night: ["moon", "t-moon"], relay: ["fan", "t-teal"], usbdbg: ["usb", "t-gray"] };
 
 /* ---------- computer state ---------- */
 function stateOf(id, d, st) {
@@ -937,6 +964,7 @@ function cardFor(id) {
     <div class="hero"></div>
     <div class="acts-main"></div>
     <div class="acts-quick" hidden></div>
+    <div class="relay" hidden></div>
     <div class="result" hidden></div>
     <a class="recent" href="${href}/log" hidden></a>`;
   el.addEventListener("click", (ev) => {
@@ -1014,6 +1042,12 @@ function renderCard(id) {
     if (b.classList.contains("arm")) return;
     b.disabled = !online || !!b.dataset.unsupported || !!st.busy;
   });
+  const ry = online && st.relay, ryEl = el.querySelector(".relay");
+  ryEl.hidden = !ry;
+  if (ry) {
+    const h = relayHtml(d, ry);
+    if (ryEl._html !== h) { ryEl.innerHTML = h; ryEl._html = h; ryEl.classList.toggle("on", !!ry.on); }
+  }
   const r = results.get(id), rEl = el.querySelector(".result");
   rEl.hidden = !r;
   rEl.className = "result" + (r && r.cls ? " " + r.cls : "");
@@ -1026,6 +1060,20 @@ function renderCard(id) {
     if (rec._html !== h) { rec.innerHTML = h; rec._html = h; rec.dataset.k = e.k; }
   }
   return el;
+}
+/* status "relay": {name, on, mode: link|manual, follow, off_in?, timer?}; off_in counts from when the status came */
+function relayText(d, r) {
+  const left = typeof r.off_in === "number" ? Math.max(0, r.off_in - (Date.now() - d.statusAt) / 1000) : -1;
+  const min = Math.max(1, Math.ceil(left / 60)), when = min >= 60 && min % 60 === 0 ? min / 60 + " 小時" : min + " 分鐘";
+  if (r.on && left >= 0) return r.timer ? when + "後自動關" : "電腦睡著，" + when + "後關";
+  if (r.follow) return "跟著電腦";
+  if (r.mode === "link") return "手動" + (r.on ? "開" : "關") + "，電腦下次醒來或睡著時恢復連動";
+  return "手動";
+}
+function relayHtml(d, r) {
+  return `<span class="fi">${ICON.fan}</span><span class="rt"><b>${esc(r.name || "風扇")}</b><small>${esc(relayText(d, r))}</small></span>` +
+    `<button class="ib" data-act="relay-timer" aria-label="定時關">${ICON.clock}</button>` +
+    `<button class="tgl" role="switch" aria-checked="${!!r.on}" aria-label="${esc(r.name || "風扇")}" data-act="relay"></button>`;
 }
 function renderHome() {
   const box = $("devices");
@@ -1350,6 +1398,25 @@ async function act(id, what, btn) {
     return;
   }
   if (what === "cancel-wake") { d.cancelWake = true; return; }
+  if (what === "relay" || what === "relay-timer") {
+    const ry = (d.status || {}).relay;
+    if (!ry) return;
+    let extra = { on: !ry.on };
+    if (what === "relay-timer") {
+      const min = await sheet({ icon: "clock", title: (ry.name || "風扇") + "定時關", text: "現在打開，時間到自動關。",
+        choices: [[15, "15 分鐘"], [30, "30 分鐘"], [60, "1 小時"], [120, "2 小時"]] });
+      if (!min) return;
+      extra = { on: true, min };
+    }
+    btn.disabled = true;
+    if (what === "relay") btn.setAttribute("aria-checked", String(extra.on));   /* the status confirms it */
+    const r = await send(id, "relay", extra);
+    btn.disabled = false;
+    if (r.ok) vibrate();
+    else { toast(r.msg, false); if (what === "relay") btn.setAttribute("aria-checked", String(!extra.on)); }
+    if (r.ok && extra.min) toast(r.msg, true);
+    return;
+  }
   if (what === "ota") { pickFirmware(id); return; }
   if (what === "ota-cancel") { const r = otaRuns.get(id); if (r) r.cancel = true; return; }
   if (what === "ota-close") { otaRuns.delete(id); renderAll(); return; }
