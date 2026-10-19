@@ -554,6 +554,7 @@ function signal(rssi) {
 function actionLook(a) {
   if (a.op === "wake") return ["sun", "sun"];
   if (a.op === "rescue") return ["wifi", "amber"];
+  if (a.op === "reboot") return ["refresh", "red"];
   return ({ unlock: ["key", "key"], standby: ["moon", "moon"], restart: ["restart", "red"], home: ["home", "teal"] })[(a.args || {}).seq] || ["play", "key"];
 }
 /* "重新開機（長按）" -> ["重新開機", "長按"]; "執行「home」" -> ["home"] */
@@ -786,6 +787,14 @@ function legacyUi(d) {
     { label: "BOOT 按鈕", lines: [1, 2, 3].map((n) => ({ prefix: n + " 下：", key: "cfg.btn" + n, options: "btn_actions" })) },
   ];
   return { v: 1, legacy: true, actions, settings, options: { btn_actions: btnActions }, info, cfg };
+}
+
+/* Every cloud firmware takes "reboot", so boards that do not describe it still get this one. */
+const REBOOT = { id: "reboot", label: "重新開機 WakeKey", op: "reboot", confirm: "dialog", group: "detail", ask: "重新開機",
+  confirm_text: "只重開 WakeKey 板子，約 10 秒離線；電腦不受影響。" };
+function actionOf(ui, aid) {
+  const a = ((ui || {}).actions || []).find((x) => x.id === aid);
+  return a || (aid === REBOOT.id ? REBOOT : null);
 }
 
 /* null while a board that has a description has not sent it yet */
@@ -1205,6 +1214,7 @@ async function runAction(id, a) {
   } else if (r.ok) {
     results.set(id, { html: `<div class="line ok">${ICON.check}<b>${esc(name)}</b></div><div class="msg">${esc(r.msg)}</div>`, cls: "ok" });
     vibrate();
+    if (a.op === "reboot" && route().name !== "home") go("#/");   /* results show on the home cards */
   } else {
     results.set(id, { html: `<div class="line bad">${ICON.x}<b>${esc(name)}</b></div><div class="msg">${esc(r.msg)}</div>`, cls: "bad" });
   }
@@ -1229,7 +1239,7 @@ function renderDevice(id, tab, changed) {
       const b = ev.target.closest("button");
       if (!b) return;
       if (b.dataset.save) saveSection(id, b.dataset.save, b);
-      else if (b.dataset.a) { const a = (uiOf(liveOf(id)) || {}).actions.find((x) => x.id === b.dataset.a); if (a) runConfirmed(id, a); }
+      else if (b.dataset.a) { const a = actionOf(uiOf(liveOf(id)), b.dataset.a); if (a) runConfirmed(id, a); }
       else if (b.dataset.act) act(id, b.dataset.act, b);
     };
   }
@@ -1330,9 +1340,11 @@ function setPane(id, d, st, ui) {
 }
 function devGroup(id, ui, online) {
   const rescue = ui && (ui.actions || []).find((a) => a.op === "rescue");
+  const reboot = (ui && (ui.actions || []).find((a) => a.op === "reboot")) || REBOOT;
   return `<div class="group glass">
     <button class="row" data-act="rename"><span class="ri">${ICON.pencil}</span><span class="rl">改名稱</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` +
     (rescue && online ? `<button class="row" data-a="${esc(rescue.id)}"><span class="ri">${ICON.wifi}</span><span class="rl">開設定熱點</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` : "") +
+    (online ? `<button class="row" data-a="${esc(reboot.id)}"><span class="ri">${ICON.refresh}</span><span class="rl">${esc(reboot.label)}</span>${ICON.chevR.replace("<svg", '<svg class="chev"')}</button>` : "") +
     `<button class="row danger" data-act="remove"><span class="ri">${ICON.trash}</span><span class="rl">從清單移除</span></button></div>`;
 }
 /* Save turns on once a section differs from what the board has. */
