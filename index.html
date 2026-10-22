@@ -511,6 +511,7 @@ const ICON = {
   sun: S(`<circle cx="12" cy="12" r="4.3" ${F}/><path d="M12 2.6v2.1M12 19.3v2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M2.6 12h2.1M19.3 12h2.1M5.4 18.6l1.5-1.5M17.1 6.9l1.5-1.5"/>`),
   key: S(`<circle cx="8.2" cy="15.6" r="4.6" ${F}/><circle cx="8.2" cy="15.6" r="1.3"/><path d="M11.5 12.3 20.2 3.6M16.6 7.2l2.7 2.7M18.7 5.1l1.9 1.9"/>`),
   moon: S(`<path d="M20.4 14.3A8.6 8.6 0 1 1 9.7 3.6a6.9 6.9 0 0 0 10.7 10.7z" ${F}/><path d="M16.6 3.4v3M15.1 4.9h3M20.1 8.4v1.9M19.15 9.35h1.9"/>`),
+  lock: S(`<rect x="5" y="10.4" width="14" height="10.2" rx="2.6" ${F}/><path d="M8.2 10.4V7.8a3.8 3.8 0 0 1 7.6 0v2.6M12 14.4v2.4"/>`),
   restart: S(`<circle cx="12" cy="12" r="8" ${F} stroke="none"/><path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20.2 3.8v4.6h-4.6"/><path d="M12 8.2v4.2"/>`),
   home: S(`<path d="M3.6 10.4 12 3.7l8.4 6.7v8.7a1.6 1.6 0 0 1-1.6 1.6h-4v-5.6H9.2v5.6h-4a1.6 1.6 0 0 1-1.6-1.6z" ${F}/>`),
   play: S(`<path d="M8 5.2v13.6L18.8 12z" ${F}/>`),
@@ -553,6 +554,7 @@ function signal(rssi) {
 /* each board action: icon + color family (tile on the big buttons, glyph tint on the round ones) */
 function actionLook(a) {
   if (a.op === "wake") return ["sun", "sun"];
+  if (a.op === "lock") return ["lock", "moon"];
   if (a.op === "rescue") return ["wifi", "amber"];
   if (a.op === "reboot") return ["refresh", "red"];
   return ({ unlock: ["key", "key"], standby: ["moon", "moon"], restart: ["restart", "red"], home: ["home", "teal"] })[(a.args || {}).seq] || ["play", "key"];
@@ -744,7 +746,7 @@ const CONFIRMS = ["none", "twotap", "hold", "dialog"];
 const INFO_CLS = ["ok", "warn", "bad", "muted"];
 /* Ops that press keys on the computer or take the board offline are never a single tap,
    whatever a board's description says. */
-const NEEDS_CONFIRM = ["unlock", "test_seq", "reboot", "unpair", "rescue", "set_usb_debug", "set_pin", "clear_pin"];
+const NEEDS_CONFIRM = ["lock", "unlock", "test_seq", "reboot", "unpair", "rescue", "set_usb_debug", "set_pin", "clear_pin"];
 
 function legacyUi(d) {
   const st = d.status || {}, seqs = d.seqs, has = (n) => !!(seqs && seqs.includes(n));
