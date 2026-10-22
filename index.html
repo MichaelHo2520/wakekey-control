@@ -852,7 +852,8 @@ function infoValue(it, ui, view) {
 }
 const INFO_ICON = { "遠端喚醒": "moon", "PIN": "shield", "最近一次": "clock", "Wi-Fi": "wifi", "USB 除錯埠": "usb", "BOOT 按鈕": "button", "狀態燈": "bulb", "夜間模式": "moon",
   "已運作": "clock", "開機原因": "restart", "記憶體": "chip", "斷線次數": "cloudOff" };
-const SECTION_LOOK = { btn: ["button", "t-teal"], led: ["bulb", "t-sun"], night: ["moon", "t-moon"], relay: ["fan", "t-teal"], usbdbg: ["usb", "t-gray"] };
+const SECTION_LOOK = { btn: ["button", "t-teal"], remote: ["play", "t-key"], pin: ["lock", "t-moon"], led: ["bulb", "t-sun"],
+  night: ["moon", "t-moon"], relay: ["fan", "t-teal"], usbdbg: ["usb", "t-gray"] };
 
 /* ---------- computer state ---------- */
 function stateOf(id, d, st) {
@@ -1307,12 +1308,17 @@ function fieldHtml(ui, f, v) {
 }
 function rangeText(f, v) { return v === 0 && f.zero ? f.zero : v + " / " + f.max; }
 /* A section's current value in a word or two, for its folded header:
+   - only switches, several of them (控制網頁按鈕): the ones that are on, else 全關
    - led on/off switch first (夜間模式, USB 除錯埠): 關, or when on its 開始–結束 span, else 開
    - only selects that can be "none" (BOOT 按鈕): 開 when any of them does something, else 關
    - otherwise the first range (狀態燈: 5 / 10, or its zero text) */
 function secSummary(ui, s, cfg) {
   const fields = (s.fields || []).filter((f) => cfg[f.key] !== undefined), pick = (l) => fields.find((f) => f.label === l);
   if (!fields.length) return "";
+  if (fields.length > 1 && fields.every((f) => f.type === "bool")) {
+    const on = fields.filter((f) => cfg[f.key]).map((f) => shortLabel(f.label)[0]);
+    return on.length ? on.join("、") : "全關";
+  }
   if (fields[0].type === "bool") {
     if (!cfg[fields[0].key]) return "關";
     const a = pick("開始"), b = pick("結束"), t = (f) => optionLabel(optionList(ui, f), cfg[f.key]);
